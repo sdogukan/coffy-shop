@@ -157,3 +157,6 @@ vite.config.ts.timestamp-*
 *.pem
 data/
 backups/
+
+# Next.js generated types
+next-env.d.ts
