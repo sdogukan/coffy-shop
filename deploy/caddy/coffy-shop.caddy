@@ -1,0 +1,6 @@
+# Coffy Shop site block. Add it as a separate site next to the existing ones;
+# do not change any other site block. deploy/README.md describes the steps
+# (back up, add, caddy validate, systemctl reload caddy).
+coffy.52-29-95-160.sslip.io {
+	reverse_proxy 127.0.0.1:3002
+}

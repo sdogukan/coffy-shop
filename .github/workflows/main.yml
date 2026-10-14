@@ -1,0 +1,189 @@
+name: Main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release
+    # The release runs on the Linux x64 server as built here; nothing is built there.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Package release
+        run: npm run package:release -- "$RUNNER_TEMP/release"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coffy-shop-release
+          path: ${{ runner.temp }}/release/coffy-shop-${{ github.sha }}-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Demo
+    needs: build
+    # A failed build must notify DIJJI without uploading or activating anything.
+    if: always()
+    runs-on: ubuntu-latest
+    # Health and version are verified, and a failed release rolled back, inside
+    # this job, so GitHub marks the Demo deployment successful only after both
+    # checks pass.
+    environment:
+      name: Demo
+      url: ${{ vars.COFFY_APP_URL }}
+    concurrency:
+      group: coffy-shop-demo-deploy
+      cancel-in-progress: false
+    # Above the sum of the step limits below, so a slow step fails (and rolls
+    # back) before the job itself is cancelled.
+    timeout-minutes: 70
+    steps:
+      - name: Require successful release build
+        env:
+          COFFY_BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          if [[ "$COFFY_BUILD_RESULT" != success ]]; then
+            echo "::error::Release build did not succeed; deployment will be skipped."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        timeout-minutes: 5
+        with:
+          persist-credentials: false
+
+      - name: Check Demo deploy settings
+        env:
+          COFFY_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.COFFY_DEPLOY_SSH_PRIVATE_KEY }}
+          COFFY_DEPLOY_KNOWN_HOSTS: ${{ secrets.COFFY_DEPLOY_KNOWN_HOSTS }}
+          COFFY_APP_URL: ${{ vars.COFFY_APP_URL }}
+          COFFY_DEPLOY_HOST: ${{ vars.COFFY_DEPLOY_HOST }}
+          COFFY_DEPLOY_USER: ${{ vars.COFFY_DEPLOY_USER }}
+          COFFY_DEPLOY_PATH: ${{ vars.COFFY_DEPLOY_PATH }}
+          COFFY_PORT: ${{ vars.COFFY_PORT }}
+          COFFY_DATABASE_PATH: ${{ vars.COFFY_DATABASE_PATH }}
+        run: bash scripts/ci/check-deploy-config.sh
+
+      - uses: actions/download-artifact@v8
+        timeout-minutes: 5
+        with:
+          name: coffy-shop-release
+          path: ${{ runner.temp }}/release
+
+      - name: Configure SSH
+        env:
+          COFFY_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.COFFY_DEPLOY_SSH_PRIVATE_KEY }}
+          COFFY_DEPLOY_KNOWN_HOSTS: ${{ secrets.COFFY_DEPLOY_KNOWN_HOSTS }}
+          COFFY_DEPLOY_HOST: ${{ vars.COFFY_DEPLOY_HOST }}
+          COFFY_DEPLOY_USER: ${{ vars.COFFY_DEPLOY_USER }}
+        run: |
+          umask 077
+          ssh_dir="$RUNNER_TEMP/coffy-ssh"
+          mkdir -p "$ssh_dir"
+          printf '%s\n' "$COFFY_DEPLOY_SSH_PRIVATE_KEY" >"$ssh_dir/id_deploy"
+          # The host key is pinned by the operator (deploy/README.md section 3); it is never scanned here.
+          printf '%s\n' "$COFFY_DEPLOY_KNOWN_HOSTS" >"$ssh_dir/known_hosts"
+          cat >"$ssh_dir/config" <<EOF
+          Host coffy-demo
+            HostName $COFFY_DEPLOY_HOST
+            User $COFFY_DEPLOY_USER
+            IdentityFile $ssh_dir/id_deploy
+            IdentitiesOnly yes
+            UserKnownHostsFile $ssh_dir/known_hosts
+            GlobalKnownHostsFile /dev/null
+            StrictHostKeyChecking yes
+            BatchMode yes
+            ConnectTimeout 20
+            ServerAliveInterval 15
+            ServerAliveCountMax 4
+          EOF
+
+      - name: Upload release
+        timeout-minutes: 10
+        env:
+          COFFY_DEPLOY_PATH: ${{ vars.COFFY_DEPLOY_PATH }}
+        run: >-
+          bash scripts/ci/upload-release.sh "$RUNNER_TEMP/coffy-ssh/config"
+          "$RUNNER_TEMP/release/coffy-shop-$GITHUB_SHA-linux-x64.tar.gz"
+          "$COFFY_DEPLOY_PATH" "$GITHUB_SHA"
+
+      # The wrapper waits up to 15 minutes for its lock, then backs up,
+      # migrates, switches the release and restarts the service.
+      - name: Activate release
+        id: activate
+        timeout-minutes: 17
+        run: ssh -F "$RUNNER_TEMP/coffy-ssh/config" coffy-demo "sudo -n /usr/local/sbin/coffy-shop-deploy activate $GITHUB_SHA"
+
+      # 12 attempts x (2 x 10 s request limit + 5 s) = at most 5 minutes.
+      - name: Verify health and version over HTTPS
+        timeout-minutes: 6
+        env:
+          COFFY_APP_URL: ${{ vars.COFFY_APP_URL }}
+        run: bash scripts/ci/verify-release.sh "$COFFY_APP_URL" "$GITHUB_SHA" 12 5
+
+      # Runs whenever activation was attempted and anything failed from there
+      # on. The wrapper only switches back if this SHA is current; the job
+      # still ends failed because an earlier step failed.
+      - name: Roll back release
+        if: >-
+          (failure() || cancelled()) &&
+          contains(fromJSON('["success", "failure", "cancelled"]'), steps.activate.outcome)
+        timeout-minutes: 17
+        run: |
+          echo "::error title=Demo deploy failed::Rolling back $GITHUB_SHA"
+          ssh -F "$RUNNER_TEMP/coffy-ssh/config" coffy-demo "sudo -n /usr/local/sbin/coffy-shop-deploy rollback $GITHUB_SHA"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/coffy-ssh"
+
+      # This project's deploy API advances DIJJI only for the exact merged SHA.
+      # Keep notification after rollback and cleanup: an API error must not
+      # roll back an already verified application or report a false deploy failure.
+      - name: Notify DIJJI of deployment result
+        if: always()
+        timeout-minutes: 2
+        env:
+          COFFY_DIJJI_DEPLOY_WEBHOOK_KEY: ${{ secrets.COFFY_DIJJI_DEPLOY_WEBHOOK_KEY }}
+          COFFY_DEPLOY_STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$COFFY_DIJJI_DEPLOY_WEBHOOK_KEY" ]]; then
+            echo "::error::Missing Demo secret COFFY_DIJJI_DEPLOY_WEBHOOK_KEY"
+            exit 1
+          fi
+          response=$(mktemp)
+          trap 'rm -f -- "$response"' EXIT
+          payload=$(jq -cn --arg sha "$GITHUB_SHA" --arg state "$COFFY_DEPLOY_STATE" \
+            '{sha: $sha, state: $state, environment: "Demo"}')
+          code=$(curl --silent --show-error --proto '=https' \
+            --connect-timeout 10 --max-time 30 --request POST \
+            --header "X-Api-Key: $COFFY_DIJJI_DEPLOY_WEBHOOK_KEY" \
+            --header 'Content-Type: application/json' --data "$payload" \
+            --output "$response" --write-out '%{http_code}' \
+            'https://app.dijji.ai/_api/webhooks/deploy')
+          accepted=$(jq -r '.received == true' "$response" 2>/dev/null || true)
+          if [[ "$code" != 200 || "$accepted" != true ]]; then
+            echo "::error::DIJJI deployment notification was not accepted (HTTP $code)"
+            exit 1
+          fi
+          echo "DIJJI accepted the $COFFY_DEPLOY_STATE deployment notification."

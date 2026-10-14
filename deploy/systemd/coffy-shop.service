@@ -1,0 +1,30 @@
+# Coffy Shop Next.js standalone server. Installed by provision.sh to
+# /etc/systemd/system/coffy-shop.service; @COFFY_NODE_BIN@ is replaced with the
+# Node 24 binary provision.sh verified as coffy-shop. HOSTNAME=127.0.0.1 and
+# PORT=3002 come from the environment file, so only Caddy reaches the server.
+[Unit]
+Description=Coffy Shop web application
+After=network.target
+
+[Service]
+# exec: systemctl restart fails when the binary cannot be started, which fails the deploy.
+Type=exec
+User=coffy-shop
+Group=coffy-shop
+WorkingDirectory=/opt/coffy-shop/current
+EnvironmentFile=/etc/coffy-shop/coffy-shop.env
+ExecStart=@COFFY_NODE_BIN@ /opt/coffy-shop/current/server.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+# SQLite writes temporary files to /var/tmp or /tmp, which ProtectSystem=strict makes read-only.
+PrivateTmp=yes
+# The release directory stays read-only; the server only writes the database.
+ReadWritePaths=/var/lib/coffy-shop
+
+[Install]
+WantedBy=multi-user.target
