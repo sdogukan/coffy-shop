@@ -12,6 +12,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "package:release": "bash scripts/package-release.sh",
     "migrate": "node src/cli/migrate.ts",
     "seed": "node src/cli/seed.ts",
     "reset": "node src/cli/reset.ts",
