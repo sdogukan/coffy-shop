@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# Coffy Shop release activation wrapper. Installed by provision.sh to
+# /usr/local/sbin/coffy-shop-deploy (root:root 0755); the deploy account may run
+# it through sudo and nothing else.
+#
+#   coffy-shop-deploy activate <sha>   back up the database, migrate, seed on
+#                                      initial setup, switch current, restart
+#   coffy-shop-deploy rollback <sha>   if <sha> is current, switch back to the
+#                                      release that was current before it
+#
+# The only caller input is the subcommand and a 40-character lowercase hex SHA.
+# Every path comes from this script or from the root-owned environment file.
+# Release contents are writable by the deploy account, so release code is only
+# ever executed as coffy-shop, never as root.
+
+set -euo pipefail
+umask 022
+export LC_ALL=C
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+readonly BASE_DIR=/opt/coffy-shop
+readonly RELEASES_DIR="$BASE_DIR/releases"
+readonly CURRENT_LINK="$BASE_DIR/current"
+readonly PREVIOUS_LINK="$BASE_DIR/previous"
+readonly BACKUP_DIR=/var/lib/coffy-shop/backups
+readonly ENV_FILE=/etc/coffy-shop/coffy-shop.env
+readonly LOCK_FILE=/run/coffy-shop-deploy.lock
+readonly LOCK_WAIT_SECONDS=900
+readonly SERVICE=coffy-shop.service
+readonly RUN_USER=coffy-shop
+readonly KEEP_RELEASES=5
+# Replaced by provision.sh with the Node 24 binary it verified as coffy-shop.
+readonly NODE_BIN="@COFFY_NODE_BIN@"
+readonly SHA_PATTERN='^[0-9a-f]{40}$'
+
+log() { printf 'coffy-shop-deploy: %s\n' "$*"; }
+die() { printf 'coffy-shop-deploy: error: %s\n' "$*" >&2; exit 1; }
+usage() {
+  printf 'usage: coffy-shop-deploy {activate|rollback} <40-character lowercase hex commit SHA>\n' >&2
+  exit 2
+}
+
+if [[ $# -ne 2 ]]; then
+  usage
+fi
+readonly COMMAND=$1
+readonly SHA=$2
+case "$COMMAND" in
+  activate | rollback) ;;
+  *) usage ;;
+esac
+if [[ ! $SHA =~ $SHA_PATTERN ]]; then
+  usage
+fi
+
+if [[ $EUID -ne 0 ]]; then
+  die "must be run as root (sudo /usr/local/sbin/coffy-shop-deploy ...)"
+fi
+
+# Prints the value of NAME from the environment file without evaluating it:
+# the file uses systemd EnvironmentFile syntax and values such as password
+# hashes contain characters a shell would expand.
+env_value() {
+  local line value
+  line=$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" | tail -n 1) || true
+  value=${line#*=}
+  value=${value%"${value##*[![:space:]]}"}
+  if [[ $value == \"*\" || $value == \'*\' ]]; then
+    value=${value:1:${#value}-2}
+  fi
+  printf '%s' "$value"
+}
+
+load_config() {
+  [[ -f $ENV_FILE ]] || die "$ENV_FILE is missing; run provision.sh and fill it in"
+  [[ -O $ENV_FILE ]] || die "$ENV_FILE must be owned by root"
+  DATABASE_PATH=$(env_value COFFY_DATABASE_PATH)
+  [[ $DATABASE_PATH == /* ]] || die "COFFY_DATABASE_PATH in $ENV_FILE must be an absolute path"
+  [[ $DATABASE_PATH != "$BASE_DIR"/* ]] || die "COFFY_DATABASE_PATH must be outside $BASE_DIR"
+  # An empty HOSTNAME makes the Next.js server listen on every interface.
+  [[ $(env_value HOSTNAME) == 127.0.0.1 ]] || die "HOSTNAME in $ENV_FILE must be 127.0.0.1"
+  [[ $(env_value PORT) =~ ^[0-9]+$ ]] || die "PORT in $ENV_FILE must be a port number"
+  [[ $NODE_BIN == /* && -x $NODE_BIN ]] || die "Node binary is not configured; re-run provision.sh"
+}
+
+# Prints the SHA a release link points to, or nothing when the link is absent.
+link_sha() {
+  local target name
+  [[ -L $1 ]] || return 0
+  target=$(readlink -- "$1")
+  name=${target##*/}
+  if [[ $target != "releases/$name" || ! $name =~ $SHA_PATTERN ]]; then
+    die "$1 points to an unexpected target: $target"
+  fi
+  printf '%s' "$name"
+}
+
+# Replaces a release link in one rename so readers never see it missing.
+point_link() {
+  local link=$1 sha=$2 tmp="$BASE_DIR/.link-new"
+  rm -f -- "$tmp"
+  ln -s -- "releases/$sha" "$tmp"
+  mv -fT -- "$tmp" "$link"
+}
+
+require_release() {
+  local dir="$RELEASES_DIR/$1"
+  [[ -d $dir && ! -L $dir ]] || die "release $1 is not a directory under $RELEASES_DIR"
+  [[ -f $dir/server.js ]] || die "release $1 has no server.js at its root"
+}
+
+# Runs one of the release's database entry points as coffy-shop with only the
+# database path in its environment.
+run_entry_point() {
+  local release_dir="$RELEASES_DIR/$1" script=$2
+  shift 2
+  (
+    cd -- "$release_dir" || exit 1
+    umask 077
+    setpriv --reuid="$RUN_USER" --regid="$RUN_USER" --init-groups -- \
+      /usr/bin/env -i PATH=/usr/bin:/bin COFFY_DATABASE_PATH="$DATABASE_PATH" \
+      "$NODE_BIN" "$release_dir/src/cli/$script" "$@"
+  )
+}
+
+restart_service() {
+  systemctl restart "$SERVICE" || die "systemctl restart $SERVICE failed"
+  log "restarted $SERVICE"
+}
+
+# Keeps the newest $KEEP_RELEASES release directories plus current and
+# previous. Only real directories named by a SHA directly under the releases
+# directory are candidates; anything else is left alone.
+prune_releases() {
+  local current previous count=0 name
+  current=$(link_sha "$CURRENT_LINK")
+  previous=$(link_sha "$PREVIOUS_LINK")
+  while read -r _ name; do
+    count=$((count + 1))
+    if ((count <= KEEP_RELEASES)) || [[ $name == "$current" || $name == "$previous" ]]; then
+      continue
+    fi
+    if [[ $name =~ $SHA_PATTERN && -d $RELEASES_DIR/$name && ! -L $RELEASES_DIR/$name ]]; then
+      # A failed prune leaves an extra release on disk while the activated
+      # release is serving, so it must not fail the deploy and trigger a rollback.
+      if rm -rf --one-file-system -- "${RELEASES_DIR:?}/$name"; then
+        log "pruned release $name"
+      else
+        log "warning: could not prune release $name; remove it manually"
+      fi
+    fi
+  done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d \
+    -regextype posix-extended -regex '.*/[0-9a-f]{40}' -printf '%T@ %f\n' | sort -rn)
+}
+
+activate() {
+  local current database_existed=false backup_file script
+  require_release "$SHA"
+  for script in backup.ts migrate.ts seed.ts; do
+    [[ -f $RELEASES_DIR/$SHA/src/cli/$script ]] || die "release $SHA has no src/cli/$script"
+  done
+  current=$(link_sha "$CURRENT_LINK")
+
+  if [[ -e $DATABASE_PATH ]]; then
+    database_existed=true
+    backup_file="$BACKUP_DIR/coffy-$(date -u +%Y%m%dT%H%M%SZ)-before-$SHA.sqlite"
+    run_entry_point "$SHA" backup.ts "$backup_file" || die "backup failed; nothing was changed"
+    log "backed up the database to $backup_file"
+  else
+    log "no database at $DATABASE_PATH yet (initial setup); skipping backup"
+  fi
+
+  run_entry_point "$SHA" migrate.ts || die "migration failed; current release is unchanged"
+
+  if [[ $database_existed == false ]]; then
+    run_entry_point "$SHA" seed.ts || die "seed failed; current release is unchanged"
+  fi
+
+  # Re-activating the running SHA keeps the recorded rollback target, so a
+  # re-run never makes a release its own rollback target.
+  if [[ -n $current && $current != "$SHA" ]]; then
+    point_link "$PREVIOUS_LINK" "$current"
+  fi
+  point_link "$CURRENT_LINK" "$SHA"
+  log "current release is now $SHA (previous: $(link_sha "$PREVIOUS_LINK"))"
+
+  restart_service
+  prune_releases
+}
+
+rollback() {
+  local current previous
+  current=$(link_sha "$CURRENT_LINK")
+  if [[ $current != "$SHA" ]]; then
+    log "current release is ${current:-none}, not $SHA; nothing to roll back"
+    return 0
+  fi
+  previous=$(link_sha "$PREVIOUS_LINK")
+  [[ -n $previous && $previous != "$SHA" ]] || die "no previous release recorded for $SHA; cannot roll back"
+  require_release "$previous"
+
+  point_link "$CURRENT_LINK" "$previous"
+  # The rolled-back release must not become a rollback target again.
+  rm -f -- "$PREVIOUS_LINK"
+  log "rolled back current release from $SHA to $previous (the database is not restored)"
+  restart_service
+}
+
+exec 9>"$LOCK_FILE"
+flock -w "$LOCK_WAIT_SECONDS" 9 || die "another deploy is still running (waited ${LOCK_WAIT_SECONDS}s)"
+
+load_config
+"$COMMAND"

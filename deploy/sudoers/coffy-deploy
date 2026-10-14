@@ -1,0 +1,4 @@
+# Installed by provision.sh to /etc/sudoers.d/coffy-deploy (root:root 0440).
+# The deploy account may run the root-owned Coffy Shop wrapper and nothing else;
+# the wrapper validates its own arguments.
+coffy-deploy ALL=(root) NOPASSWD: /usr/local/sbin/coffy-shop-deploy
