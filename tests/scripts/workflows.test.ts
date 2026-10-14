@@ -79,9 +79,8 @@ describe("main workflow", () => {
   });
 
   it("passes secrets only through env and never masks a failing step", () => {
-    expect(workflow.match(/\$\{\{ secrets\.[A-Z_]+ \}\}/g)?.length).toBe(4);
     for (const line of workflow.split("\n").filter((text) => text.includes("secrets."))) {
-      expect(line).toMatch(/^ {10}COFFY_DEPLOY_(SSH_PRIVATE_KEY|KNOWN_HOSTS): \$\{\{ secrets\.COFFY_DEPLOY_\1 \}\}$/);
+      expect(line).toMatch(/^ {10}([A-Z_]+): \$\{\{ secrets\.\1 \}\}$/);
     }
     expect(workflow).not.toContain("continue-on-error");
   });

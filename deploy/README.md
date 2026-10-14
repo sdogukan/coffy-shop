@@ -157,6 +157,7 @@ Secrets:
 | --- | --- |
 | `COFFY_DEPLOY_SSH_PRIVATE_KEY` | Private half of the deploy key from section 3. |
 | `COFFY_DEPLOY_KNOWN_HOSTS` | The verified `known_hosts` line from section 3. |
+| `COFFY_DIJJI_DEPLOY_WEBHOOK_KEY` | This project's Deploy Webhook API key, generated in DIJJI project settings. |
 
 Variables:
 
@@ -165,9 +166,19 @@ Variables:
 | `COFFY_APP_URL` | Public HTTPS URL of the site block from section 4. |
 | `COFFY_DEPLOY_HOST` | Server address the deploy job connects to. |
 | `COFFY_DEPLOY_USER` | The deploy account created by `provision.sh`. |
-| `COFFY_DEPLOY_PATH` | The base directory the releases live under. |
+| `COFFY_DEPLOY_PATH` | Must be `/opt/coffy-shop`, matching the root-owned deploy wrapper. |
 | `COFFY_PORT` | The port in the env file. |
 | `COFFY_DATABASE_PATH` | The same database path as in the env file. |
+
+After verification, rollback (if needed), and SSH cleanup, the deploy job posts
+`{sha: GITHUB_SHA, state: success|failure, environment: Demo}` to
+`https://app.dijji.ai/_api/webhooks/deploy` using the project key in `X-Api-Key`.
+Success is sent only after the exact merged SHA passes HTTPS health/version checks.
+A failed build skips every upload and activation step and sends a failure signal.
+HTTP 200 with `received: true` confirms notification acceptance; DIJJI's run state
+confirms that E2E started. A notification error fails the workflow without rolling
+back a healthy release or sending a second failure signal. After resolving it,
+retry the notification for the same SHA and actual deployment result.
 
 ## How a deploy runs
 

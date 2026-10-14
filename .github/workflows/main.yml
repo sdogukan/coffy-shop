@@ -41,6 +41,8 @@ jobs:
   deploy:
     name: Deploy to Demo
     needs: build
+    # A failed build must notify DIJJI without uploading or activating anything.
+    if: always()
     runs-on: ubuntu-latest
     # Health and version are verified, and a failed release rolled back, inside
     # this job, so GitHub marks the Demo deployment successful only after both
@@ -55,6 +57,15 @@ jobs:
     # back) before the job itself is cancelled.
     timeout-minutes: 70
     steps:
+      - name: Require successful release build
+        env:
+          COFFY_BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          if [[ "$COFFY_BUILD_RESULT" != success ]]; then
+            echo "::error::Release build did not succeed; deployment will be skipped."
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
         timeout-minutes: 5
         with:
@@ -144,3 +155,35 @@ jobs:
       - name: Remove SSH key
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/coffy-ssh"
+
+      # This project's deploy API advances DIJJI only for the exact merged SHA.
+      # Keep notification after rollback and cleanup: an API error must not
+      # roll back an already verified application or report a false deploy failure.
+      - name: Notify DIJJI of deployment result
+        if: always()
+        timeout-minutes: 2
+        env:
+          COFFY_DIJJI_DEPLOY_WEBHOOK_KEY: ${{ secrets.COFFY_DIJJI_DEPLOY_WEBHOOK_KEY }}
+          COFFY_DEPLOY_STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$COFFY_DIJJI_DEPLOY_WEBHOOK_KEY" ]]; then
+            echo "::error::Missing Demo secret COFFY_DIJJI_DEPLOY_WEBHOOK_KEY"
+            exit 1
+          fi
+          response=$(mktemp)
+          trap 'rm -f -- "$response"' EXIT
+          payload=$(jq -cn --arg sha "$GITHUB_SHA" --arg state "$COFFY_DEPLOY_STATE" \
+            '{sha: $sha, state: $state, environment: "Demo"}')
+          code=$(curl --silent --show-error --proto '=https' \
+            --connect-timeout 10 --max-time 30 --request POST \
+            --header "X-Api-Key: $COFFY_DIJJI_DEPLOY_WEBHOOK_KEY" \
+            --header 'Content-Type: application/json' --data "$payload" \
+            --output "$response" --write-out '%{http_code}' \
+            'https://app.dijji.ai/_api/webhooks/deploy')
+          accepted=$(jq -r '.received == true' "$response" 2>/dev/null || true)
+          if [[ "$code" != 200 || "$accepted" != true ]]; then
+            echo "::error::DIJJI deployment notification was not accepted (HTTP $code)"
+            exit 1
+          fi
+          echo "DIJJI accepted the $COFFY_DEPLOY_STATE deployment notification."
