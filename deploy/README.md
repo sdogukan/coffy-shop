@@ -36,7 +36,8 @@ account the deploy job uses (key login only, sudo for the wrapper only).
 A release directory must contain, at its root: the Next.js standalone `server.js` with
 its `.next/` and `node_modules/`, `.next/static` and `public`, `package.json` (with
 `"type": "module"`), `migrations/`, and `src/cli/` + `src/db/` (the database entry
-points the wrapper runs: `src/cli/backup.ts`, `src/cli/migrate.ts`, `src/cli/seed.ts`).
+points the wrapper runs: `src/cli/backup.ts`, `src/cli/migrate.ts`, `src/cli/seed.ts`)
+plus `src/admin/` (imported by the admin hash command).
 
 ## 1. Provision the server
 
@@ -93,10 +94,44 @@ correctly.
 | `PORT` | `3002` — the port the Caddy site block proxies to. |
 | `COFFY_DATABASE_PATH` | Absolute path of the SQLite file under `/var/lib/coffy-shop/data`. Must be outside `/opt/coffy-shop` and equal the GitHub `COFFY_DATABASE_PATH` variable. |
 | `COFFY_RELEASE_ENVIRONMENT` | Environment label, e.g. `demo`. |
-| `COFFY_ADMIN_USERNAME` | Staff login name (used once the staff area ships). |
-| `COFFY_ADMIN_PASSWORD_HASH` | Hash of the staff password (never the plain password). |
+| `COFFY_ADMIN_USERNAME` | Staff login name for the admin area at `/yonetim/giris`, compared exactly (case-sensitive). |
+| `COFFY_ADMIN_PASSWORD_HASH` | scrypt hash of the staff password, generated as described below (never the plain password). |
 
 Write values unquoted (`NAME=value`); the file is read by systemd, not by a shell.
+
+### Staff login
+
+Generate the password hash on a trusted workstation, in a checkout of this repository
+with Node 24 (the command uses only Node built-ins, so no install is needed):
+
+```bash
+npm run --silent admin:hash-password
+```
+
+The password is read from standard input only: on a terminal it is typed without echo
+and asked twice; it may also be piped. It is never accepted as a command-line argument
+and never printed. Only the hash is written to stdout; `--silent` keeps npm's banner out
+of it.
+
+The hash is a single line of the form `scrypt.<N>.<r>.<p>.<salt>.<key>` (salt and key in
+base64url). It contains no `$`, quotes, whitespace or `#`: paste it as the value of
+`COFFY_ADMIN_PASSWORD_HASH` exactly as printed, on one line and without quotes. Neither
+value is ever committed or sent anywhere else.
+
+The admin area fails closed. While either variable is empty or missing, or the hash is
+not one the server accepts (for example truncated or edited), login answers `503` and
+every existing staff session is rejected; the public menu and ordering keep working.
+
+systemd reads the env file only when the service starts, so after changing either value
+restart the service and check the health endpoint:
+
+```bash
+sudo systemctl restart coffy-shop
+curl -s http://127.0.0.1:3002/api/health
+```
+
+Sessions are not tied to the password: a session opened before a password change stays
+valid until it is logged out or expires (8 hours after login).
 
 ## 3. Create the deploy SSH key
 

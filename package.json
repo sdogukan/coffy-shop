@@ -16,7 +16,8 @@
     "migrate": "node src/cli/migrate.ts",
     "seed": "node src/cli/seed.ts",
     "reset": "node src/cli/reset.ts",
-    "backup": "node src/cli/backup.ts"
+    "backup": "node src/cli/backup.ts",
+    "admin:hash-password": "node src/cli/hash-admin-password.ts"
   },
   "dependencies": {
     "next": "16.4.0",

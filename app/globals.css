@@ -138,7 +138,8 @@ a.button {
 
 .checkout-summary,
 .checkout-form,
-.order-confirmation {
+.order-confirmation,
+.admin-form {
   margin-bottom: 1rem;
   padding: 1rem;
   border-radius: 0.5rem;
@@ -164,20 +165,25 @@ a.button {
   padding: 0.25rem 0;
 }
 
-.checkout-form fieldset {
+.checkout-form fieldset,
+.admin-form fieldset {
   margin: 0;
   padding: 0;
   border: 0;
 }
 
-.checkout-form label {
+.checkout-form label,
+.admin-form label {
   display: block;
   margin-top: 0.75rem;
   font-weight: 600;
 }
 
 .checkout-form input,
-.checkout-form textarea {
+.checkout-form textarea,
+.admin-form input:not([type="checkbox"]),
+.admin-form textarea,
+.admin-form select {
   display: block;
   width: 100%;
   margin-top: 0.25rem;
@@ -231,7 +237,116 @@ a.button {
   font-weight: 700;
 }
 
+/* Admin area: a bar under the shop's top bar, then a one-column list that
+   puts each product's info, toggle and edit link side by side on wider
+   screens. */
+.admin-bar {
+  background: #2b1d14;
+}
+
+.admin-bar-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0.5rem 1rem;
+}
+
+.admin-bar-title {
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-bar-logout {
+  min-height: 2.75rem;
+  padding: 0.25rem 1rem;
+  border: 1px solid #fff;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-bar-logout:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-bar-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: #ffd7d0;
+  font-weight: 600;
+}
+
+.admin-product-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-product {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.admin-product h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.admin-product-info p,
+.availability-toggle p {
+  margin: 0.25rem 0;
+}
+
+.availability-toggle .button-secondary {
+  margin-top: 0;
+}
+
+.admin-status {
+  font-weight: 600;
+}
+
+.admin-status-closed {
+  color: #a12a1b;
+}
+
+.admin-edit-link {
+  font-weight: 600;
+}
+
+.admin-form label.admin-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-form .button {
+  margin-top: 1rem;
+}
+
 @media (min-width: 30rem) {
+  .admin-product {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .admin-product-info {
+    flex: 1;
+  }
+
   .order-steps {
     flex-direction: row;
   }

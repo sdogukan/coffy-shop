@@ -53,10 +53,48 @@ npm run dev       # http://localhost:3000
 | `npm run seed` | Inserts sample categories and products that are missing by fixed ID. |
 | `npm run reset` | Replaces the catalog with the sample data. Refuses unless `NODE_ENV=test` or the catalog is empty. |
 | `npm run backup -- <absolute file>` | Writes an online backup of the database to a new file; never overwrites an existing one. |
+| `npm run --silent admin:hash-password` | Reads a staff password from standard input and prints its `COFFY_ADMIN_PASSWORD_HASH` value. |
 
 Endpoints:
 
 - `GET /api/health` returns `200 {"status":"ok","database":"ok"}` when the database at `COFFY_DATABASE_PATH` exists and is migrated, otherwise `503 {"status":"error","database":"unavailable"}`. It never creates the database file.
 - `GET /api/version` returns `{"sha":"<40-character commit SHA>"}`. The SHA is stamped at build time from `GITHUB_SHA` in CI, or from `git rev-parse HEAD` locally.
+
+## Admin area
+
+Staff sign in at `/yonetim/giris` with one account configured through the environment:
+
+- `COFFY_ADMIN_USERNAME` — the login name, compared exactly (case-sensitive).
+- `COFFY_ADMIN_PASSWORD_HASH` — the scrypt hash of the password, never the password itself.
+
+Generate the hash on a trusted machine. The password is read from standard input only: on a
+terminal it is typed without echo and asked twice, and it may also be piped. It is never
+accepted as a command-line argument and never printed; only the hash is written to stdout.
+`--silent` keeps npm's own banner out of the output.
+
+```bash
+npm run --silent admin:hash-password
+```
+
+The hash has the form `scrypt.<N>.<r>.<p>.<salt>.<key>` (salt and key are base64url) and
+contains no `$`, quotes, whitespace or `#`, so it is written unquoted on one line, both in
+`.env.local` and in the server's environment file. Never commit either value.
+
+The admin area fails closed: while either variable is missing or empty, or the hash is
+malformed, login answers `503`, every existing session is rejected, and the public menu and
+ordering keep working. A session lasts 8 hours; logout revokes it on the server.
+
+Admin endpoints (JSON, `Cache-Control: no-store`, errors as `{"error", "code"}`):
+
+- `POST /api/admin/login` with `{"username", "password"}` sets the HttpOnly session cookie.
+- `POST /api/admin/logout` revokes the session and clears the cookie.
+- `GET /api/admin/products` lists every category with every product, unavailable ones included.
+- `POST /api/admin/products` creates a product; `PATCH /api/admin/products/<id>` updates only
+  the fields sent. Products are never deleted; set `isAvailable` to `false` to take one off the menu.
+
+Mutating requests must carry `Content-Type: application/json` and an `Origin` header equal to
+the site's own origin (`https://` under `NODE_ENV=production`), so call them from the admin
+pages rather than from another site or tool. Under `npm start` (production mode over plain
+http) the secure session cookie is not stored, so try the admin area with `npm run dev`.
 
 New migrations go in `migrations/` as `NNNN_description.sql`, must be additive and must not contain their own `BEGIN`/`COMMIT`.
