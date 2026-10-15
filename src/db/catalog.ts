@@ -1,5 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { Env } from "./connection.ts";
 
 export interface CategoryFixture {
   id: string;
@@ -85,28 +84,4 @@ function inTransaction<T>(db: DatabaseSync, work: () => T): T {
 
 export function seedCatalog(db: DatabaseSync): SeedResult {
   return inTransaction(db, () => insertMissingFixtures(db));
-}
-
-export class CatalogResetRefusedError extends Error {
-  constructor() {
-    super("Catalog reset refused: the database already has catalog rows and NODE_ENV is not 'test'");
-    this.name = "CatalogResetRefusedError";
-  }
-}
-
-// Replaces the whole catalog with the fixtures. Allowed only on a test
-// database (NODE_ENV=test) or one without catalog rows, so it can never wipe
-// a live menu. The row check runs inside the write transaction.
-export function resetCatalog(db: DatabaseSync, env: Env = process.env): SeedResult {
-  return inTransaction(db, () => {
-    const row = db
-      .prepare("SELECT (SELECT COUNT(*) FROM categories) + (SELECT COUNT(*) FROM products) AS total")
-      .get() as { total: number };
-    if (row.total > 0 && env.NODE_ENV !== "test") {
-      throw new CatalogResetRefusedError();
-    }
-    db.exec("DELETE FROM products");
-    db.exec("DELETE FROM categories");
-    return insertMissingFixtures(db);
-  });
 }
