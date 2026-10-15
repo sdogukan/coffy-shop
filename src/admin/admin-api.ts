@@ -1,9 +1,13 @@
 import type { MenuProduct } from "../db/menu.ts";
+import type { AdminOrderDetails } from "../db/admin-orders.ts";
 import type { ProductFields, ProductPatch } from "../db/admin-products.ts";
+import type { OrderItemDetails } from "../db/orders.ts";
+import { isOrderStatus, type OrderStatus } from "../orders/order-status.ts";
 import {
   ADMIN_LOGIN_ENDPOINT,
   ADMIN_LOGOUT_ENDPOINT,
   ADMIN_PRODUCTS_ENDPOINT,
+  adminOrderStatusEndpoint,
   adminProductEndpoint,
 } from "./paths.ts";
 
@@ -127,6 +131,65 @@ function readProduct(body: unknown): MenuProduct | null {
     : null;
 }
 
+function isOrderItem(value: unknown): value is OrderItemDetails {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const { productId, name, unitPriceKurus, quantity, lineTotalKurus } = value as Record<string, unknown>;
+  return (
+    typeof productId === "string" &&
+    typeof name === "string" &&
+    Number.isSafeInteger(unitPriceKurus) &&
+    Number.isSafeInteger(quantity) &&
+    Number.isSafeInteger(lineTotalKurus)
+  );
+}
+
+function readOrder(body: unknown): AdminOrderDetails | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const { order } = body as Record<string, unknown>;
+  if (typeof order !== "object" || order === null) {
+    return null;
+  }
+  const { id, reference, status, customerName, note, totalKurus, createdAt, updatedAt, items } = order as Record<
+    string,
+    unknown
+  >;
+  if (
+    !Number.isSafeInteger(id) ||
+    typeof reference !== "string" ||
+    !isOrderStatus(status) ||
+    typeof customerName !== "string" ||
+    (note !== null && typeof note !== "string") ||
+    !Number.isSafeInteger(totalKurus) ||
+    typeof createdAt !== "string" ||
+    (updatedAt !== null && typeof updatedAt !== "string") ||
+    !Array.isArray(items) ||
+    !items.every(isOrderItem)
+  ) {
+    return null;
+  }
+  return {
+    id: id as number,
+    reference,
+    status,
+    customerName,
+    note,
+    totalKurus: totalKurus as number,
+    createdAt,
+    updatedAt,
+    items: items.map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      unitPriceKurus: item.unitPriceKurus,
+      quantity: item.quantity,
+      lineTotalKurus: item.lineTotalKurus,
+    })),
+  };
+}
+
 function readLoginOk(body: unknown): true | null {
   return typeof body === "object" && body !== null && (body as Record<string, unknown>).status === "ok" ? true : null;
 }
@@ -166,6 +229,16 @@ export async function submitNewProduct(fields: ProductFields, fetchImpl: typeof 
 export function submitProductPatch(id: string, patch: ProductPatch, fetchImpl: typeof fetch = fetch) {
   return sendAdminRequest(
     { path: adminProductEndpoint(id), method: "PATCH", body: patch, successStatus: 200, readValue: readProduct },
+    fetchImpl,
+  );
+}
+
+// Asks for exactly one step forward. The answer carries the status the server
+// stored; a 409 means the order was not in the status right before `to` (for
+// example another tab already moved it) and nothing was changed.
+export function submitOrderStatus(id: number, to: OrderStatus, fetchImpl: typeof fetch = fetch) {
+  return sendAdminRequest(
+    { path: adminOrderStatusEndpoint(id), method: "PATCH", body: { to }, successStatus: 200, readValue: readOrder },
     fetchImpl,
   );
 }

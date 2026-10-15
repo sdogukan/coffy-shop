@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { type OrderRequest, orderFingerprint } from "../orders/order-request.ts";
+import type { OrderStatus } from "../orders/order-status.ts";
 import { type Env, openDatabase } from "./connection.ts";
 
-export const ORDER_STATUSES = ["new", "preparing", "ready", "completed"] as const;
-export type OrderStatus = (typeof ORDER_STATUSES)[number];
+export { ORDER_STATUSES, type OrderStatus } from "../orders/order-status.ts";
 
 // 32 random bytes = 256 bits, which base64url-encodes to 43 characters.
 const TRACKING_TOKEN_BYTES = 32;

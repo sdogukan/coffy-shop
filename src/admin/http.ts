@@ -14,6 +14,12 @@ export const ADMIN_ERRORS = {
   too_many_attempts: "Çok fazla başarısız giriş denemesi yapıldı. Lütfen birkaç dakika sonra tekrar deneyin.",
   admin_disabled: "Yönetici girişi şu anda kapalı.",
   not_found: "Ürün bulunamadı.",
+  // Sent with code not_found by the order endpoints, so an order 404 does not
+  // read as a missing product.
+  order_not_found: "Sipariş bulunamadı.",
+  invalid_status: "Sipariş durumu geçersiz.",
+  invalid_transition:
+    "Sipariş bu duruma geçirilemedi; durumu değişmiş olabilir. Lütfen sayfayı yenileyip güncel durumu kontrol edin.",
   server_error: "İşlem şu anda yapılamadı. Lütfen tekrar deneyin.",
 } as const;
 

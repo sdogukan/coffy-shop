@@ -1,13 +1,10 @@
-import { ORDER_STATUSES, type OrderDetails, type OrderStatus } from "../db/orders.ts";
+import { ORDER_STATUSES, type OrderDetails } from "../db/orders.ts";
 import { formatPriceKurus } from "../menu/format-price.ts";
+import { ORDER_STATUS_LABELS } from "./order-status.ts";
 
-// Statuses are stored as codes; these Turkish labels are UI only.
-export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
-  new: "Yeni",
-  preparing: "Hazırlanıyor",
-  ready: "Hazır",
-  completed: "Tamamlandı",
-};
+// Defined next to the status codes so the admin client components can use
+// them without importing the database module.
+export { ORDER_STATUS_LABELS } from "./order-status.ts";
 
 function stepClassName(index: number, current: number): string {
   if (index < current) {
