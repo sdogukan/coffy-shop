@@ -12,7 +12,7 @@ export const ORDER_REQUEST_TIMEOUT_MS = 20_000;
 const TRACKING_PATH_PREFIX = "/siparis/";
 const UNKNOWN_RESULT_MESSAGE =
   "Siparişinizin alınıp alınmadığı doğrulanamadı. Aynı siparişi yeniden göndermek için Tekrar dene düğmesine basın.";
-const REJECTED_FALLBACK_MESSAGE = "Siparişiniz alınamadı. Lütfen bilgilerinizi kontrol edip tekrar deneyin.";
+const GENERIC_REJECTION_MESSAGE = "Siparişiniz alınamadı. Lütfen bilgilerinizi kontrol edip tekrar deneyin.";
 
 export interface CheckoutDraft {
   readonly customerName: string;
@@ -125,7 +125,7 @@ export async function sendOrderRequest(body: string, fetchImpl: typeof fetch = f
     return { kind: "unknown", message: UNKNOWN_RESULT_MESSAGE };
   }
   if (response.status >= 400 && response.status < 500) {
-    return { kind: "rejected", message: serverMessage(payload) ?? REJECTED_FALLBACK_MESSAGE };
+    return { kind: "rejected", message: serverMessage(payload) ?? GENERIC_REJECTION_MESSAGE };
   }
   console.error(`Order request answered with status ${response.status}`);
   return { kind: "unknown", message: serverMessage(payload) ?? UNKNOWN_RESULT_MESSAGE };
