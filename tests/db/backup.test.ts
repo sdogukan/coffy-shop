@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { backupDatabase } from "../../src/db/backup.ts";
 import { seedCatalog } from "../../src/db/catalog.ts";
+import { listMigrations } from "../../src/db/migrate.ts";
 import { createTempDatabase, openMigratedDatabase, type TempDatabase } from "../helpers/temp-database.ts";
 
 describe("backupDatabase", () => {
@@ -27,7 +28,7 @@ describe("backupDatabase", () => {
     const copy = new DatabaseSync(destination, { readOnly: true });
     try {
       expect(copy.prepare("SELECT COUNT(*) AS total FROM products").get()).toEqual({ total: 8 });
-      expect(copy.prepare("SELECT COUNT(*) AS total FROM schema_migrations").get()).toEqual({ total: 1 });
+      expect(copy.prepare("SELECT COUNT(*) AS total FROM schema_migrations").get()).toEqual({ total: listMigrations().length });
     } finally {
       copy.close();
     }
