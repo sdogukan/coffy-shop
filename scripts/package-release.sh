@@ -6,6 +6,7 @@
 #   server.js, .next/, node_modules/, package.json   (Next.js standalone output)
 #   .next/static, public/                            (standalone omits these)
 #   migrations/*.sql, src/cli/, src/db/              (database entry points)
+#   src/admin/                                       (imported by the admin hash CLI)
 #   REVISION                                         (the commit the build is stamped with)
 #
 # Usage: package-release.sh <output directory>
@@ -68,7 +69,7 @@ if [[ -d $PUBLIC_DIR ]]; then
 fi
 mkdir -p -- "$STAGE_DIR/migrations" "$STAGE_DIR/src"
 cp -- "${migrations[@]}" "$STAGE_DIR/migrations/"
-cp -a -- "$ROOT_DIR/src/cli" "$ROOT_DIR/src/db" "$STAGE_DIR/src/"
+cp -a -- "$ROOT_DIR/src/cli" "$ROOT_DIR/src/db" "$ROOT_DIR/src/admin" "$STAGE_DIR/src/"
 printf '%s\n' "$SHA" >"$STAGE_DIR/REVISION"
 
 # next build copies .env and .env.production into the standalone output, and

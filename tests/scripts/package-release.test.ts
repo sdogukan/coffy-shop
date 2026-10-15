@@ -35,6 +35,7 @@ function createProject(root: string, stampedSha = SHA): void {
     write(root, `src/cli/${name}`, "");
   }
   write(root, "src/db/connection.ts", "");
+  write(root, "src/admin/password.ts", "");
 }
 
 function runPackage(root: string, args: string[], sha: string | undefined = SHA) {
@@ -99,6 +100,7 @@ describe("package-release.sh", () => {
         "./src/cli/seed.ts",
         "./src/cli/run.ts",
         "./src/db/connection.ts",
+        "./src/admin/password.ts",
         "./REVISION",
       ]),
     );
