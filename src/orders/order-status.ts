@@ -7,6 +7,14 @@
 export const ORDER_STATUSES = ["new", "preparing", "ready", "completed"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+// Statuses are stored as codes; these Turkish labels are UI only.
+export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = {
+  new: "Yeni",
+  preparing: "Hazırlanıyor",
+  ready: "Hazır",
+  completed: "Tamamlandı",
+};
+
 export function isOrderStatus(value: unknown): value is OrderStatus {
   return typeof value === "string" && (ORDER_STATUSES as readonly string[]).includes(value);
 }

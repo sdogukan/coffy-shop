@@ -3,10 +3,18 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { AdminBar } from "../../src/admin/admin-bar.tsx";
 import type { AdminOutcome } from "../../src/admin/admin-api.ts";
+import { AdminOrderList, formatOrderTime } from "../../src/admin/admin-order-list.tsx";
 import { AdminProductList } from "../../src/admin/admin-product-list.tsx";
 import { applyToggleOutcome, AvailabilityToggleView } from "../../src/admin/availability-toggle.tsx";
 import { applyLoginOutcome, LoginForm, LoginFormView, type LoginFormViewProps } from "../../src/admin/login-form.tsx";
 import { applyLogoutOutcome, LogoutButton } from "../../src/admin/logout-button.tsx";
+import {
+  applyStatusOutcome,
+  ORDER_STATUS_UNKNOWN_MESSAGE,
+  OrderStatusControl,
+  OrderStatusControlView,
+  type OrderStatusControlViewProps,
+} from "../../src/admin/order-status-control.tsx";
 import {
   applySaveOutcome,
   buildNewProduct,
@@ -18,6 +26,8 @@ import {
   type ProductFormViewProps,
 } from "../../src/admin/product-form.tsx";
 import { TRY_PRICE_FORMAT_MESSAGE } from "../../src/admin/try-price-input.ts";
+import { ADMIN_ERRORS } from "../../src/admin/http.ts";
+import type { AdminOrderDetails, AdminOrderSummary } from "../../src/db/admin-orders.ts";
 import type { MenuCategory, MenuProduct } from "../../src/db/menu.ts";
 
 const noop = () => {};
@@ -65,7 +75,14 @@ function findElement(node: unknown, predicate: (element: ReactElement<Record<str
 }
 
 function handlers() {
-  return { goToList: vi.fn(), goToLogin: vi.fn(), goToProducts: vi.fn(), showError: vi.fn(), showProduct: vi.fn() };
+  return {
+    goToList: vi.fn(),
+    goToLogin: vi.fn(),
+    goToProducts: vi.fn(),
+    showError: vi.fn(),
+    showProduct: vi.fn(),
+    showStatus: vi.fn(),
+  };
 }
 
 describe("login form", () => {
@@ -123,9 +140,12 @@ describe("login form", () => {
 });
 
 describe("admin bar and logout", () => {
-  it("shows a link to the products and a Çıkış button that is a button, not a link", () => {
+  it("shows links to the products and the orders and a Çıkış button that is a button, not a link", () => {
     const html = renderToStaticMarkup(<AdminBar />);
-    expect(html).toContain('<a class="admin-bar-title" href="/yonetim/urunler">Yönetim · Ürünler</a>');
+    expect(html).toContain(
+      '<div class="admin-bar-links"><a class="admin-bar-title" href="/yonetim/urunler">Yönetim · Ürünler</a>' +
+        '<a class="admin-bar-title" href="/yonetim/siparisler">Siparişler</a></div>',
+    );
     expect(html).toContain('<button type="button" class="admin-bar-logout">Çıkış</button>');
     expect(html).not.toContain('href="/api/admin/logout"');
   });
@@ -335,5 +355,142 @@ describe("product form", () => {
     applySaveOutcome({ kind, message: "Mesaj" } as AdminOutcome<MenuProduct>, mode, result);
     expect(result.showError).toHaveBeenCalledWith("Mesaj", phase);
     expect(result.goToList).not.toHaveBeenCalled();
+  });
+});
+
+describe("admin order list", () => {
+  const ORDERS: AdminOrderSummary[] = [
+    {
+      id: 12,
+      reference: "C-1012",
+      customerName: "Mehmet <b>",
+      status: "ready",
+      totalKurus: 27100,
+      createdAt: "2026-10-15T21:30:00.000Z",
+    },
+    {
+      id: 3,
+      reference: "C-1003",
+      customerName: "Ayşe",
+      status: "new",
+      totalKurus: 9000,
+      createdAt: "2026-10-14T06:05:00.000Z",
+    },
+  ];
+
+  it("formats the time in Europe/Istanbul whatever the server's time zone, across midnight included", () => {
+    expect(formatOrderTime("2026-10-15T21:30:00.000Z")).toBe("16.10.2026 00:30");
+    expect(formatOrderTime("2026-10-14T06:05:00.000Z")).toBe("14.10.2026 09:05");
+  });
+
+  it("renders the orders in the given order with reference, customer, Turkish status, TRY total and time", () => {
+    const html = renderToStaticMarkup(<AdminOrderList orders={ORDERS} />);
+    expect(html.indexOf("C-1012")).toBeLessThan(html.indexOf("C-1003"));
+    expect(html).toContain('<h2><a href="/yonetim/siparisler/12">C-1012</a></h2>');
+    expect(html).toContain("<p>Mehmet &lt;b&gt;</p>");
+    expect(html).toContain('<time dateTime="2026-10-15T21:30:00.000Z">16.10.2026 00:30</time>');
+    expect(html).toContain('<p class="admin-status">Hazır</p><p class="product-price">₺271,00</p>');
+    const ayse = html.slice(html.indexOf("C-1003"));
+    expect(ayse).toContain('<p class="admin-status">Yeni</p>');
+    expect(ayse).toContain("₺90,00");
+  });
+
+  it("says so when there are no orders", () => {
+    expect(renderToStaticMarkup(<AdminOrderList orders={[]} />)).toBe("<p>Henüz sipariş yok.</p>");
+  });
+});
+
+describe("order status control", () => {
+  const ORDER: AdminOrderDetails = {
+    id: 1,
+    reference: "C-1001",
+    status: "preparing",
+    customerName: "Ayşe",
+    note: null,
+    totalKurus: 18000,
+    createdAt: "2026-10-15T09:00:00.000Z",
+    updatedAt: "2026-10-15T09:05:00.000Z",
+    items: [{ productId: "espresso", name: "Espresso", unitPriceKurus: 9000, quantity: 2, lineTotalKurus: 18000 }],
+  };
+
+  function render(overrides: Partial<OrderStatusControlViewProps> = {}) {
+    return renderToStaticMarkup(
+      <OrderStatusControlView status="new" pending={false} message={null} onAdvance={noop} {...overrides} />,
+    );
+  }
+
+  it.each([
+    ["new", "Yeni", "Hazırlanıyor olarak işaretle"],
+    ["preparing", "Hazırlanıyor", "Hazır olarak işaretle"],
+    ["ready", "Hazır", "Tamamlandı olarak işaretle"],
+  ] as const)("shows %s and exactly one button, for the next status only", (status, label, action) => {
+    const html = render({ status });
+    expect(html).toContain(`<p class="order-status">Durum: ${label}</p>`);
+    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(html).toContain(`<button type="button" class="button">${action}</button>`);
+  });
+
+  it("shows no button for a completed order", () => {
+    const html = render({ status: "completed" });
+    expect(html).toContain('<p class="order-status">Durum: Tamamlandı</p>');
+    expect(html).not.toContain("<button");
+  });
+
+  it("disables the button while a change is in flight and shows the error", () => {
+    const html = render({ pending: true, message: ADMIN_ERRORS.invalid_transition });
+    expect(html).toContain('<button type="button" class="button" disabled="">Hazırlanıyor olarak işaretle</button>');
+    expect(html).toContain(`<p class="form-error" role="alert">${ADMIN_ERRORS.invalid_transition}</p>`);
+  });
+
+  it("starts from the stored status with no error", () => {
+    const html = renderToStaticMarkup(<OrderStatusControl orderId={1} initialStatus="ready" />);
+    expect(html).toBe(
+      '<div class="order-status-control"><p class="order-status">Durum: Hazır</p>' +
+        '<button type="button" class="button">Tamamlandı olarak işaretle</button></div>',
+    );
+  });
+
+  it("calls onAdvance from the button", () => {
+    const onAdvance = vi.fn();
+    const button = findElement(
+      OrderStatusControlView({ status: "new", pending: false, message: null, onAdvance }),
+      (element) => element.type === "button",
+    );
+    (button?.props.onClick as () => void)();
+    expect(onAdvance).toHaveBeenCalledOnce();
+  });
+
+  it("shows the status the server stored on success", () => {
+    const ok = handlers();
+    applyStatusOutcome({ kind: "ok", value: { ...ORDER, status: "ready" } }, ok);
+    expect(ok.showStatus).toHaveBeenCalledWith("ready");
+    expect(ok.showError).not.toHaveBeenCalled();
+  });
+
+  it.each([ADMIN_ERRORS.invalid_transition, ADMIN_ERRORS.order_not_found, ADMIN_ERRORS.server_error])(
+    "keeps the shown status and shows the server's message %j when the change is rejected",
+    (message) => {
+      const rejected = handlers();
+      applyStatusOutcome({ kind: "failed", message }, rejected);
+      expect(rejected.showError).toHaveBeenCalledWith(message);
+      expect(rejected.showStatus).not.toHaveBeenCalled();
+      expect(rejected.goToLogin).not.toHaveBeenCalled();
+    },
+  );
+
+  it("asks to reload and check, not to resend, when the answer is lost", () => {
+    const lost = handlers();
+    applyStatusOutcome({ kind: "unknown", message: "Sunucuya ulaşılamadı." }, lost);
+    expect(lost.showError).toHaveBeenCalledWith(ORDER_STATUS_UNKNOWN_MESSAGE);
+    expect(ORDER_STATUS_UNKNOWN_MESSAGE).toContain("sayfayı yenileyip");
+    expect(lost.showStatus).not.toHaveBeenCalled();
+  });
+
+  it("goes to the login page on 401 without changing the status", () => {
+    const unauthorized = handlers();
+    applyStatusOutcome({ kind: "unauthorized", message: "Oturum yok" }, unauthorized);
+    expect(unauthorized.goToLogin).toHaveBeenCalledOnce();
+    expect(unauthorized.showStatus).not.toHaveBeenCalled();
+    expect(unauthorized.showError).not.toHaveBeenCalled();
   });
 });

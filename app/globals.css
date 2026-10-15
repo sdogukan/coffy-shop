@@ -261,6 +261,12 @@ a.button {
   text-decoration: none;
 }
 
+.admin-bar-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
 .admin-bar-logout {
   min-height: 2.75rem;
   padding: 0.25rem 1rem;
@@ -326,6 +332,39 @@ a.button {
   font-weight: 600;
 }
 
+.admin-order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-order {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.admin-order h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.admin-order p {
+  margin: 0.25rem 0;
+}
+
+.order-status-control {
+  margin: 1rem 0;
+}
+
+.order-status-control p {
+  margin: 0.25rem 0;
+}
+
 .admin-form label.admin-checkbox {
   display: flex;
   align-items: center;
@@ -345,6 +384,16 @@ a.button {
 
   .admin-product-info {
     flex: 1;
+  }
+
+  .admin-order {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .admin-order-meta {
+    text-align: right;
   }
 
   .order-steps {
