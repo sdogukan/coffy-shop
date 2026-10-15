@@ -61,6 +61,7 @@ describe("CartContents", () => {
     expect(html).toContain("Sepetiniz boş.");
     expect(html).toContain('<a href="/">Menüye dön</a>');
     expect(html).not.toContain("Toplam");
+    expect(html).not.toContain("Siparişi tamamla");
   });
 
   it("lists stored lines matched to the menu with increase, decrease and remove controls and the total", () => {
@@ -76,6 +77,7 @@ describe("CartContents", () => {
     expect(espresso).toContain('aria-label="Espresso adedini artır"');
     expect(espresso).toContain("Sepetten çıkar");
     expect(html).toContain("Toplam: ₺315,50");
+    expect(html).toContain('<a class="button" href="/siparis-ver">Siparişi tamamla</a>');
   });
 
   it("disables decrease at quantity 1 and increase at quantity 20", () => {

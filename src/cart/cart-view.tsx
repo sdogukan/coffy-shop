@@ -78,6 +78,9 @@ export function CartContents({ lines, onSetQuantity, onRemove }: CartContentsPro
       </ul>
       <p className="cart-total">Toplam: {formatPriceKurus(cartTotalKurus(lines))}</p>
       <p className="cart-note">Fiyatlar bilgi amaçlıdır; sipariş sırasında güncel fiyatlar esas alınır.</p>
+      <Link href="/siparis-ver" className="button">
+        Siparişi tamamla
+      </Link>
     </>
   );
 }

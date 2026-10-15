@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addToCart,
   CART_STORAGE_KEY,
+  clearCart,
   getCartSnapshot,
   getServerCartSnapshot,
   removeFromCart,
@@ -130,6 +131,20 @@ describe("cart store", () => {
     expect(stored(storage)).toEqual([{ productId: "espresso", quantity: 1 }]);
   });
 
+  it("empties the stored cart and notifies subscribers once", () => {
+    addToCart(ESPRESSO, 2);
+    addToCart({ id: "latte", isAvailable: true });
+    const listener = vi.fn();
+    const unsubscribe = subscribeCart(listener);
+    expect(clearCart()).toBe("changed");
+    expect(stored(storage)).toEqual([]);
+    expect(getCartSnapshot()).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(clearCart()).toBe("rejected");
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
   it("reports 'not loaded yet' on the server instead of an empty cart", () => {
     expect(getServerCartSnapshot()).toBeNull();
   });
@@ -169,6 +184,7 @@ describe("cart store with unusable storage", () => {
     expect(addToCart(ESPRESSO)).toBe("storage-error");
     expect(setCartQuantity("espresso", 2)).toBe("storage-error");
     expect(removeFromCart("espresso")).toBe("storage-error");
+    expect(clearCart()).toBe("storage-error");
   });
 
   it("reports a failed write and leaves the stored cart as it was", () => {
@@ -176,6 +192,7 @@ describe("cart store with unusable storage", () => {
     const { storage } = stubWindow(new FullStorage());
     storage.values.set(CART_STORAGE_KEY, '[{"productId":"espresso","quantity":1}]');
     expect(addToCart(ESPRESSO)).toBe("storage-error");
+    expect(clearCart()).toBe("storage-error");
     expect(storage.values.get(CART_STORAGE_KEY)).toBe('[{"productId":"espresso","quantity":1}]');
     expect(console.error).toHaveBeenCalledWith("Cart storage could not be written", expect.any(DOMException));
   });
