@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { hashAdminPassword } from "../../src/admin/password.ts";
 
 const DEPLOY_DIR = fileURLToPath(new URL("../../deploy/", import.meta.url));
 const WRAPPER = join(DEPLOY_DIR, "coffy-shop-deploy");
@@ -167,4 +168,28 @@ describe("operator runbook", () => {
       expect(runbook).toContain(`\n${heading}\n`);
     },
   );
+
+  it("documents the staff hash command that package.json defines", () => {
+    const packageJson = JSON.parse(readFileSync(join(DEPLOY_DIR, "..", "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(runbook).toContain("npm run --silent admin:hash-password");
+    expect(packageJson.scripts["admin:hash-password"]).toBe("node src/cli/hash-admin-password.ts");
+  });
+
+  it("documents the hash format the backend produces", async () => {
+    expect(runbook).toContain("`scrypt.<N>.<r>.<p>.<salt>.<key>`");
+    expect(await hashAdminPassword("runbook format check")).toMatch(
+      /^scrypt\.[0-9]+\.[0-9]+\.[0-9]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/,
+    );
+  });
+
+  it("documents fail-closed staff login and the restart after an env change", () => {
+    expect(runbook).toContain("The admin area fails closed.");
+    expect(runbook).toContain("sudo systemctl restart coffy-shop");
+  });
+
+  it("contains no staff password hash", () => {
+    expect(runbook).not.toMatch(/scrypt\.[0-9]/);
+  });
 });
