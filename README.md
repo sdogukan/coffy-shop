@@ -46,12 +46,14 @@ npm run dev       # http://localhost:3000
 | --- | --- |
 | `npm run dev` | Starts the development server. |
 | `npm run typecheck` | Type-checks the project (`tsc --noEmit`). |
-| `npm test` | Runs the test suite. Every test uses its own temporary SQLite file; `COFFY_DATABASE_PATH` from your shell is ignored. |
+| `npm test` | Runs the unit and feature test suite (Vitest, `tests/`). Every test uses its own temporary SQLite file; `COFFY_DATABASE_PATH` from your shell is ignored. |
+| `npm run smoke` | Builds, then runs `npm run smoke:run`. The one command for the end-to-end smoke. |
+| `npm run smoke:run` | Runs the Playwright smoke (`e2e/smoke`) against the existing build: a fresh temporary database, a random test admin, `next start` and an HTTPS proxy on `127.0.0.1`, all removed afterwards. See [Smoke test](#smoke-test). |
 | `npm run build` | Production build with standalone output (`.next/standalone`). |
 | `npm start` | Serves the production build locally with `next start` (the release runs the standalone `server.js`). |
 | `npm run migrate` | Applies pending files from `migrations/` in name order; each file and its `schema_migrations` row commit together. |
 | `npm run seed` | Inserts sample categories and products that are missing by fixed ID. |
-| `npm run reset` | Replaces the catalog with the sample data. Refuses unless `NODE_ENV=test` or the catalog is empty. |
+| `npm run reset -- --database <absolute file> --confirm-wipe` | Wipes a local database and rebuilds it as a fresh migrate + seed (sample menu, no orders, no admin sessions). The path comes only from `--database`, never from `COFFY_DATABASE_PATH`. Refuses a relative or missing path, anything under `/var/lib/coffy-shop` or `/var/lib/dolmus-takip` (also through a symlink) and `NODE_ENV=production`. |
 | `npm run backup -- <absolute file>` | Writes an online backup of the database to a new file; never overwrites an existing one. |
 | `npm run --silent admin:hash-password` | Reads a staff password from standard input and prints its `COFFY_ADMIN_PASSWORD_HASH` value. |
 
@@ -59,6 +61,24 @@ Endpoints:
 
 - `GET /api/health` returns `200 {"status":"ok","database":"ok"}` when the database at `COFFY_DATABASE_PATH` exists and is migrated, otherwise `503 {"status":"error","database":"unavailable"}`. It never creates the database file.
 - `GET /api/version` returns `{"sha":"<40-character commit SHA>"}`. The SHA is stamped at build time from `GITHUB_SHA` in CI, or from `git rev-parse HEAD` locally.
+
+## Smoke test
+
+`npm run smoke` checks the whole flow end to end against a local production build: menu,
+cart, checkout, admin login, the order moved Yeni → Hazırlanıyor → Hazır, and the tracking
+page showing Hazır, plus the negative cases (invalid quantity, empty cart, unavailable
+product, admin API without a session or `Origin`, invalid tracking link, a resent checkout).
+
+```bash
+npx playwright install chromium   # once
+npm run smoke                     # or: npm run build && npm run smoke:run
+```
+
+It needs `openssl` on `PATH`. Your shell's `COFFY_*` variables are never used: the server
+gets its own temporary database and test admin, and the specs refuse any base URL that is
+not `https` on a loopback address. The scenarios, their expected results and the notes for
+running them against Demo are in [`e2e/README.md`](e2e/README.md). The pull request workflow
+runs `npm run smoke:run` after its build step.
 
 ## Admin area
 

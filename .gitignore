@@ -160,3 +160,7 @@ backups/
 
 # Next.js generated types
 next-env.d.ts
+
+# Playwright smoke output (may hold page captures; never commit)
+test-results/
+playwright-report/

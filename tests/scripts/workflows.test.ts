@@ -28,6 +28,16 @@ describe("pull request workflow", () => {
     expectGatesInOrder(workflow);
   });
 
+  it("runs the local smoke against the build it just made, after the build gate", () => {
+    const steps = ["run: npm run build", "run: npx playwright install --with-deps chromium", "run: npm run smoke:run"].map(
+      (step) => workflow.indexOf(step),
+    );
+    expect(steps.every((position) => position >= 0)).toBe(true);
+    expect([...steps].sort((a, b) => a - b)).toEqual(steps);
+    // npm run smoke builds again; the PR job stays inside its time limit with one build.
+    expect(workflow).not.toMatch(/run: npm run smoke$/m);
+  });
+
   it("never touches the Demo environment or its settings", () => {
     expect(workflow).not.toMatch(/environment|secrets\.|vars\./);
   });
