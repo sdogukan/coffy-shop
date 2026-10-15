@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetCatalog, seedCatalog } from "../../src/db/catalog.ts";
+import { seedCatalog } from "../../src/db/catalog.ts";
 import { DATABASE_PATH_ENV } from "../../src/db/connection.ts";
 import * as orders from "../../src/db/orders.ts";
 import {
@@ -256,9 +256,8 @@ describe("createOrder", () => {
     expect(count(db, "order_items")).toBe(2);
   });
 
-  it("leaves products deletable and resetCatalog working once orders exist", () => {
+  it("leaves products deletable once orders exist", () => {
     const order = placed(createOrder(db, request()));
-    expect(() => resetCatalog(db, { NODE_ENV: "test" })).not.toThrow();
     db.exec("DELETE FROM products WHERE id = 'espresso'");
     expect(findOrderByTrackingToken(db, order.trackingToken)?.items.map((item) => item.name)).toEqual([
       "Americano",

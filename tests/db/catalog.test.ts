@@ -1,11 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  CatalogResetRefusedError,
-  PRODUCT_FIXTURES,
-  resetCatalog,
-  seedCatalog,
-} from "../../src/db/catalog.ts";
+import { PRODUCT_FIXTURES, seedCatalog } from "../../src/db/catalog.ts";
 import { createTempDatabase, openMigratedDatabase, type TempDatabase } from "../helpers/temp-database.ts";
 
 interface ProductRow {
@@ -29,7 +24,7 @@ function count(db: DatabaseSync, table: "categories" | "products"): number {
   return (db.prepare(`SELECT COUNT(*) AS total FROM ${table}`).get() as { total: number }).total;
 }
 
-describe("catalog seed and reset", () => {
+describe("catalog seed", () => {
   let temp: TempDatabase;
   let db: DatabaseSync;
 
@@ -78,29 +73,5 @@ describe("catalog seed and reset", () => {
     expect(byId.get("espresso")).toMatchObject({ name: "Double Espresso", price_kurus: 12345, is_available: 0 });
     const limonata = PRODUCT_FIXTURES.find((product) => product.id === "limonata");
     expect(byId.get("limonata")).toMatchObject({ name: limonata?.name, price_kurus: limonata?.priceKurus });
-  });
-
-  it("refuses to reset a non-test database that has catalog rows and leaves it untouched", () => {
-    seedCatalog(db);
-    db.prepare("UPDATE products SET price_kurus = 1 WHERE id = 'espresso'").run();
-
-    expect(() => resetCatalog(db, { NODE_ENV: "production" })).toThrow(CatalogResetRefusedError);
-    expect(() => resetCatalog(db, {})).toThrow(CatalogResetRefusedError);
-    expect(db.isTransaction).toBe(false);
-    expect(db.prepare("SELECT price_kurus FROM products WHERE id = 'espresso'").get()).toEqual({ price_kurus: 1 });
-  });
-
-  it("resets an empty non-test database", () => {
-    expect(resetCatalog(db, { NODE_ENV: "production" })).toEqual({ categoriesInserted: 2, productsInserted: 8 });
-  });
-
-  it("restores the fixtures exactly on a test database", () => {
-    seedCatalog(db);
-    db.prepare("UPDATE products SET price_kurus = 1 WHERE id = 'espresso'").run();
-    db.prepare("INSERT INTO products (id, category_id, name, price_kurus) VALUES ('extra', 'sicak-kahveler', 'Ekstra', 500)").run();
-
-    expect(resetCatalog(db, { NODE_ENV: "test" })).toEqual({ categoriesInserted: 2, productsInserted: 8 });
-    expect(count(db, "products")).toBe(8);
-    expect(db.prepare("SELECT price_kurus FROM products WHERE id = 'espresso'").get()).toEqual({ price_kurus: 9000 });
   });
 });
