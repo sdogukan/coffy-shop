@@ -108,3 +108,8 @@ export function setCartQuantity(productId: string, quantity: number): CartChange
 export function removeFromCart(productId: string): CartChangeResult {
   return updateCart((cart) => removeItem(cart, productId));
 }
+
+// Called once an order is accepted. An already empty cart is "rejected".
+export function clearCart(): CartChangeResult {
+  return updateCart(() => EMPTY_CART);
+}
