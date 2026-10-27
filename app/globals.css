@@ -365,6 +365,51 @@ a.button {
   margin: 0.25rem 0;
 }
 
+.admin-milk-option-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.admin-milk-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.admin-milk-option h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.admin-milk-option p {
+  margin: 0.25rem 0;
+}
+
+.admin-milk-surcharge label {
+  display: block;
+  font-weight: 600;
+}
+
+.admin-milk-surcharge input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid #b9a89b;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+.admin-form h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
 .admin-form label.admin-checkbox {
   display: flex;
   align-items: center;

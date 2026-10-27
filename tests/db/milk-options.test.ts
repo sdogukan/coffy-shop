@@ -14,7 +14,9 @@ import {
   findMilkOptionById,
   generateMilkOptionId,
   getAvailableMilkOptions,
+  getMilkOptions,
   readAvailableMilkOptions,
+  readMilkOptions,
   updateMilkOption,
 } from "../../src/db/milk-options.ts";
 import { createOrder, findOrderByTrackingToken } from "../../src/db/orders.ts";
@@ -124,6 +126,19 @@ describe("milk option writes", () => {
     expect(findMilkOptionById(db, "yulaf")).toMatchObject({ isAvailable: false });
   });
 
+  it("lists every option for staff, removed ones included, the default first and then staff order", () => {
+    const ids = ["yulaf", "badem"];
+    createMilkOption(db, { name: "Yulaf sütü", surchargeKurus: 1500 }, () => ids.shift() as string);
+    createMilkOption(db, { name: "Badem sütü", surchargeKurus: 2000 }, () => ids.shift() as string);
+    updateMilkOption(db, "yulaf", { isAvailable: false });
+    db.exec("UPDATE milk_options SET sort_order = 99 WHERE id = 'normal-sut'");
+    expect(getMilkOptions(db)).toEqual([
+      NORMAL_MILK,
+      { id: "yulaf", name: "Yulaf sütü", surchargeKurus: 1500, isDefault: false, isAvailable: false },
+      { id: "badem", name: "Badem sütü", surchargeKurus: 2000, isDefault: false, isAvailable: true },
+    ]);
+  });
+
   it("lists the default first even when its position is after another option", () => {
     createMilkOption(db, { name: "Yulaf sütü", surchargeKurus: 1500 }, () => "yulaf");
     db.exec("UPDATE milk_options SET sort_order = 99 WHERE id = 'normal-sut'");
@@ -185,13 +200,19 @@ describe("milk option writes", () => {
     expect(created).toMatchObject({ name: "Yulaf sütü", isDefault: false, isAvailable: true });
     expect(editMilkOption(created.id, { surchargeKurus: 1600 })).toMatchObject({ status: "updated", milkOption: { surchargeKurus: 1600 } });
     expect(readAvailableMilkOptions().map((option) => option.id)).toEqual(["normal-sut", created.id]);
+    editMilkOption(created.id, { isAvailable: false });
+    expect(readMilkOptions().map((option) => [option.id, option.isAvailable])).toEqual([
+      ["normal-sut", true],
+      [created.id, false],
+    ]);
     expect(editMilkOption("a".repeat(65), { isAvailable: false })).toEqual({ status: "not_found" });
-    expect(close).toHaveBeenCalledTimes(3);
+    expect(close).toHaveBeenCalledTimes(5);
   });
 
   it("the wrappers throw for a missing database and do not create it", () => {
     const path = join(temp.dir, "missing.sqlite");
     expect(() => readAvailableMilkOptions({ [DATABASE_PATH_ENV]: path })).toThrow();
+    expect(() => readMilkOptions({ [DATABASE_PATH_ENV]: path })).toThrow();
     expect(() => addMilkOption({ name: "Yulaf sütü", surchargeKurus: 1500 }, { [DATABASE_PATH_ENV]: path })).toThrow();
   });
 });

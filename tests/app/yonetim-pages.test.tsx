@@ -11,6 +11,10 @@ import AdminOrdersPage, {
   dynamic as ordersDynamic,
   metadata as ordersMetadata,
 } from "../../app/yonetim/siparisler/page.tsx";
+import AdminMilkOptionsPage, {
+  dynamic as milkDynamic,
+  metadata as milkMetadata,
+} from "../../app/yonetim/sut-secenekleri/page.tsx";
 import AdminEditProductPage, { dynamic as editDynamic } from "../../app/yonetim/urunler/[id]/page.tsx";
 import AdminProductsPage, { dynamic as listDynamic, metadata as listMetadata } from "../../app/yonetim/urunler/page.tsx";
 import AdminNewProductPage, { dynamic as newDynamic } from "../../app/yonetim/urunler/yeni/page.tsx";
@@ -19,6 +23,7 @@ import { ADMIN_SESSION_COOKIE, createSessionToken, hashSessionToken } from "../.
 import { createAdminSession, endAdminSession, startAdminSession } from "../../src/db/admin-sessions.ts";
 import { PRODUCT_FIXTURES, seedCatalog } from "../../src/db/catalog.ts";
 import { openDatabase } from "../../src/db/connection.ts";
+import { addMilkOption, editMilkOption } from "../../src/db/milk-options.ts";
 import { createOrder } from "../../src/db/orders.ts";
 import { formatPriceKurus } from "../../src/menu/format-price.ts";
 import { parseOrderRequest } from "../../src/orders/order-request.ts";
@@ -54,6 +59,7 @@ const PAGES: [string, () => Promise<unknown>][] = [
   ["/yonetim/urunler/[id]", () => AdminEditProductPage({ params: Promise.resolve({ id: "cold-brew" }) })],
   ["/yonetim/siparisler", () => AdminOrdersPage()],
   ["/yonetim/siparisler/[id]", () => AdminOrderPage({ params: Promise.resolve({ id: "1" }) })],
+  ["/yonetim/sut-secenekleri", () => AdminMilkOptionsPage()],
 ];
 
 // Order 1 (new, with a note) and then order 2 (ready), priced from the seeded
@@ -130,6 +136,8 @@ describe("admin pages", () => {
     expect(editDynamic).toBe("force-dynamic");
     expect(ordersDynamic).toBe("force-dynamic");
     expect(orderDynamic).toBe("force-dynamic");
+    expect(milkDynamic).toBe("force-dynamic");
+    expect(milkMetadata.robots).toEqual({ index: false, follow: false });
     expect(listMetadata.robots).toEqual({ index: false, follow: false });
     expect(ordersMetadata.robots).toEqual({ index: false, follow: false });
     expect(orderMetadata.robots).toEqual({ index: false, follow: false });
@@ -179,11 +187,12 @@ describe("admin pages", () => {
       await expect(renderPage()).rejects.toMatchObject(REDIRECT_TO_LOGIN);
     });
 
-    it("shows the admin bar with both links and Çıkış to a valid session", async () => {
+    it("shows the admin bar with every link and Çıkış to a valid session", async () => {
       sendCookie(loggedIn());
       const html = await render(renderPage());
       expect(html).toContain('<a class="admin-bar-title" href="/yonetim/urunler">Yönetim · Ürünler</a>');
       expect(html).toContain('<a class="admin-bar-title" href="/yonetim/siparisler">Siparişler</a>');
+      expect(html).toContain('<a class="admin-bar-title" href="/yonetim/sut-secenekleri">Süt seçenekleri</a>');
       expect(html).toContain('<button type="button" class="admin-bar-logout">Çıkış</button>');
     });
   });
@@ -206,6 +215,67 @@ describe("admin pages", () => {
     const coldBrew = html.slice(coldBrewStart, html.indexOf("</li>", coldBrewStart));
     expect(coldBrew).toContain('<p class="admin-status admin-status-closed">Kapalı</p>');
     expect(coldBrew).toContain("₺150,00");
+  });
+
+  it("marks exactly the milk drinks as Sütlü in the product list", async () => {
+    sendCookie(loggedIn());
+    const html = await render(AdminProductsPage());
+    for (const product of PRODUCT_FIXTURES) {
+      const start = html.indexOf(`<h3>${product.name}</h3>`);
+      const row = html.slice(start, html.indexOf("</li>", start));
+      if (product.containsMilk === 1) {
+        expect(row, product.name).toContain('<p class="admin-status">Sütlü</p>');
+      } else {
+        expect(row, product.name).not.toContain("Sütlü");
+      }
+    }
+  });
+
+  it("shows Normal süt as Ücretsiz with no surcharge input or removal control, and the add form", async () => {
+    sendCookie(loggedIn());
+    const html = await render(AdminMilkOptionsPage());
+    expect(html).toContain("<h1>Süt seçenekleri</h1>");
+    expect(html).toContain(
+      '<ul class="admin-milk-option-list"><li class="admin-milk-option"><div class="admin-product-info">' +
+        '<h3>Normal süt</h3><p class="product-price">Ücretsiz</p></div></li></ul>',
+    );
+    expect(html).not.toContain("milk-surcharge-normal-sut");
+    expect(html).not.toContain("Satıştan kaldır");
+    expect(html).toContain('<h2 id="milk-option-new-title">Yeni süt seçeneği</h2>');
+    expect(html).toContain('<button type="submit" class="button">Süt seçeneğini ekle</button>');
+  });
+
+  it("lists an added option after Normal süt on the next read, removed ones with Satışa aç", async () => {
+    const oat = addMilkOption({ name: "Yulaf sütü", surchargeKurus: 2550 });
+    const almond = addMilkOption({ name: "Badem <süt>", surchargeKurus: 2000 });
+    editMilkOption(almond.id, { isAvailable: false });
+    sendCookie(loggedIn());
+    const html = await render(AdminMilkOptionsPage());
+    expect(html.match(/<li class="admin-milk-option">/g)).toHaveLength(3);
+    const normal = html.indexOf("<h3>Normal süt</h3>");
+    const oatStart = html.indexOf("<h3>Yulaf sütü</h3>");
+    const almondStart = html.indexOf("<h3>Badem &lt;süt&gt;</h3>");
+    expect(normal).toBeGreaterThan(-1);
+    expect(oatStart).toBeGreaterThan(normal);
+    expect(almondStart).toBeGreaterThan(oatStart);
+
+    const oatRow = html.slice(oatStart, almondStart);
+    expect(oatRow).toContain('<p class="product-price">+₺25,50</p>');
+    expect(oatRow).toMatch(new RegExp(`<input id="milk-surcharge-${oat.id}"[^>]*name="surcharge" value="25,50"/>`));
+    expect(oatRow).toContain(">Satıştan kaldır</button>");
+    const almondRow = html.slice(almondStart, html.indexOf("</li>", almondStart));
+    expect(almondRow).toContain('<p class="admin-status admin-status-closed">Satıştan kaldırıldı</p>');
+    expect(almondRow).toContain(">Satışa aç</button>");
+  });
+
+  it("starts the Sütlü ürün checkbox from the stored value on the edit page and unchecked on the new page", async () => {
+    sendCookie(loggedIn());
+    const latte = await render(AdminEditProductPage({ params: Promise.resolve({ id: "caffe-latte" }) }));
+    expect(latte).toContain('<input type="checkbox" name="containsMilk" checked=""/>Sütlü ürün</label>');
+    const coldBrew = await render(AdminEditProductPage({ params: Promise.resolve({ id: "cold-brew" }) }));
+    expect(coldBrew).toContain('<input type="checkbox" name="containsMilk"/>Sütlü ürün</label>');
+    const fresh = await render(AdminNewProductPage());
+    expect(fresh).toContain('<input type="checkbox" name="containsMilk"/>Sütlü ürün</label>');
   });
 
   it("shows the create form with every category and an empty price", async () => {

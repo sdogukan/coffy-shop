@@ -5,7 +5,7 @@ import { AvailabilityToggle } from "./availability-toggle.tsx";
 import { adminProductPath } from "./paths.ts";
 
 // Every category with every product, closed ones included, each with its
-// availability toggle and an edit link.
+// availability toggle and an edit link. A milk drink is marked "Sütlü".
 export function AdminProductList({ menu }: { menu: readonly MenuCategory[] }) {
   if (menu.length === 0) {
     return <p>Henüz kategori yok.</p>;
@@ -24,6 +24,7 @@ export function AdminProductList({ menu }: { menu: readonly MenuCategory[] }) {
                   <div className="admin-product-info">
                     <h3>{product.name}</h3>
                     <p className="product-price">{formatPriceKurus(product.priceKurus)}</p>
+                    {product.containsMilk && <p className="admin-status">Sütlü</p>}
                   </div>
                   <AvailabilityToggle
                     productId={product.id}

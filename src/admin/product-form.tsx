@@ -213,6 +213,15 @@ export function ProductFormView({ categories, draft, phase, message, submitLabel
           />
           Satışta
         </label>
+        <label className="admin-checkbox">
+          <input
+            name="containsMilk"
+            type="checkbox"
+            checked={draft.containsMilk}
+            onChange={(event) => onChange({ ...draft, containsMilk: event.target.checked })}
+          />
+          Sütlü ürün
+        </label>
       </fieldset>
       {message !== null && (
         <p className="form-error" role="alert">

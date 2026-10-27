@@ -1,12 +1,15 @@
 import type { MenuProduct } from "../db/menu.ts";
 import type { AdminOrderDetails } from "../db/admin-orders.ts";
 import type { ProductFields, ProductPatch } from "../db/admin-products.ts";
+import type { MilkOption, MilkOptionFields, MilkOptionPatch } from "../db/milk-options.ts";
 import type { OrderItemDetails } from "../db/orders.ts";
 import { isOrderStatus, type OrderStatus } from "../orders/order-status.ts";
 import {
   ADMIN_LOGIN_ENDPOINT,
   ADMIN_LOGOUT_ENDPOINT,
+  ADMIN_MILK_OPTIONS_ENDPOINT,
   ADMIN_PRODUCTS_ENDPOINT,
+  adminMilkOptionEndpoint,
   adminOrderStatusEndpoint,
   adminProductEndpoint,
 } from "./paths.ts";
@@ -14,8 +17,8 @@ import {
 // Browser side of /api/admin/*. Every request is a relative, same-origin
 // fetch, so the browser sends its own Origin (the backend's CSRF check) and
 // the session cookie never goes to another origin. Nothing is retried
-// automatically: POST /api/admin/products has no idempotency key, so a resend
-// could create a second product.
+// automatically: POST /api/admin/products and POST /api/admin/milk-options
+// have no idempotency key, so a resend could create a second product or option.
 
 export const ADMIN_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -26,6 +29,8 @@ export const ADMIN_CLIENT_MESSAGES = {
   unauthorized: "Oturumunuz yok veya süresi doldu. Lütfen tekrar giriş yapın.",
   createUnknown:
     "Ürünün kaydedilip kaydedilmediği doğrulanamadı. Tekrar göndermeden önce ürün listesini kontrol edin.",
+  milkOptionCreateUnknown:
+    "Süt seçeneğinin kaydedilip kaydedilmediği doğrulanamadı. Tekrar göndermeden önce süt seçenekleri listesini yenileyip kontrol edin.",
 } as const;
 
 // ok: the expected success answer. unauthorized: 401, no valid session (or,
@@ -129,6 +134,36 @@ function readProduct(body: unknown): MenuProduct | null {
         priceKurus: product.priceKurus,
         isAvailable: product.isAvailable,
         containsMilk: product.containsMilk,
+      }
+    : null;
+}
+
+function isMilkOption(value: unknown): value is MilkOption {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const { id, name, surchargeKurus, isDefault, isAvailable } = value as Record<string, unknown>;
+  return (
+    typeof id === "string" &&
+    typeof name === "string" &&
+    Number.isSafeInteger(surchargeKurus) &&
+    typeof isDefault === "boolean" &&
+    typeof isAvailable === "boolean"
+  );
+}
+
+function readMilkOption(body: unknown): MilkOption | null {
+  if (typeof body !== "object" || body === null) {
+    return null;
+  }
+  const { milkOption } = body as Record<string, unknown>;
+  return isMilkOption(milkOption)
+    ? {
+        id: milkOption.id,
+        name: milkOption.name,
+        surchargeKurus: milkOption.surchargeKurus,
+        isDefault: milkOption.isDefault,
+        isAvailable: milkOption.isAvailable,
       }
     : null;
 }
@@ -241,6 +276,26 @@ export function submitProductPatch(id: string, patch: ProductPatch, fetchImpl: t
 export function submitOrderStatus(id: number, to: OrderStatus, fetchImpl: typeof fetch = fetch) {
   return sendAdminRequest(
     { path: adminOrderStatusEndpoint(id), method: "PATCH", body: { to }, successStatus: 200, readValue: readOrder },
+    fetchImpl,
+  );
+}
+
+export async function submitNewMilkOption(fields: MilkOptionFields, fetchImpl: typeof fetch = fetch) {
+  const outcome = await sendAdminRequest(
+    { path: ADMIN_MILK_OPTIONS_ENDPOINT, method: "POST", body: fields, successStatus: 201, readValue: readMilkOption },
+    fetchImpl,
+  );
+  // A lost answer to a create must not invite a blind resend.
+  return outcome.kind === "unknown"
+    ? { kind: "unknown" as const, message: ADMIN_CLIENT_MESSAGES.milkOptionCreateUnknown }
+    : outcome;
+}
+
+// Sends absolute values (a surcharge, a target availability); the answer
+// carries the option as the server stored it.
+export function submitMilkOptionPatch(id: string, patch: MilkOptionPatch, fetchImpl: typeof fetch = fetch) {
+  return sendAdminRequest(
+    { path: adminMilkOptionEndpoint(id), method: "PATCH", body: patch, successStatus: 200, readValue: readMilkOption },
     fetchImpl,
   );
 }

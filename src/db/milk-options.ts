@@ -103,6 +103,15 @@ export function getAvailableMilkOptions(db: DatabaseSync): MilkOption[] {
   return rows.map(toMilkOption);
 }
 
+// Every option, the removed ones included, in the same order: what staff
+// manage on the milk options page.
+export function getMilkOptions(db: DatabaseSync): MilkOption[] {
+  const rows = db
+    .prepare(`SELECT ${SELECT_COLUMNS} FROM milk_options ORDER BY is_default DESC, sort_order, id`)
+    .all() as unknown as MilkOptionRow[];
+  return rows.map(toMilkOption);
+}
+
 // An id outside the column's bounds never reaches SQLite.
 export function findMilkOptionById(db: DatabaseSync, id: string): MilkOption | null {
   if (!isMilkOptionId(id)) {
@@ -176,6 +185,16 @@ export function readAvailableMilkOptions(env: Env = process.env): MilkOption[] {
   try {
     db = openDatabase({ env });
     return getAvailableMilkOptions(db);
+  } finally {
+    db?.close();
+  }
+}
+
+export function readMilkOptions(env: Env = process.env): MilkOption[] {
+  let db: DatabaseSync | undefined;
+  try {
+    db = openDatabase({ env });
+    return getMilkOptions(db);
   } finally {
     db?.close();
   }
