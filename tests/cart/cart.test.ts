@@ -18,15 +18,15 @@ const MENU: MenuCategory[] = [
     id: "sicak-kahveler",
     name: "Sıcak Kahveler",
     products: [
-      { id: "espresso", categoryId: "sicak-kahveler", name: "Espresso", description: "Tek shot.", priceKurus: 9000, isAvailable: true },
-      { id: "latte", categoryId: "sicak-kahveler", name: "Latte", description: "Sütlü.", priceKurus: 13550, isAvailable: true },
+      { id: "espresso", categoryId: "sicak-kahveler", name: "Espresso", description: "Tek shot.", priceKurus: 9000, isAvailable: true, containsMilk: false },
+      { id: "latte", categoryId: "sicak-kahveler", name: "Latte", description: "Sütlü.", priceKurus: 13550, isAvailable: true, containsMilk: true },
     ],
   },
   {
     id: "soguk-icecekler",
     name: "Soğuk İçecekler",
     products: [
-      { id: "cold-brew", categoryId: "soguk-icecekler", name: "Cold Brew", description: "Soğuk demleme.", priceKurus: 12000, isAvailable: false },
+      { id: "cold-brew", categoryId: "soguk-icecekler", name: "Cold Brew", description: "Soğuk demleme.", priceKurus: 12000, isAvailable: false, containsMilk: false },
     ],
   },
 ];

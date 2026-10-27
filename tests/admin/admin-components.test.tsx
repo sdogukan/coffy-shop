@@ -39,6 +39,7 @@ const LATTE: MenuProduct = {
   description: "Espresso ve süt.",
   priceKurus: 13550,
   isAvailable: true,
+  containsMilk: true,
 };
 
 const COLD_BREW: MenuProduct = {
@@ -48,6 +49,7 @@ const COLD_BREW: MenuProduct = {
   description: "",
   priceKurus: 15000,
   isAvailable: false,
+  containsMilk: false,
 };
 
 const CATEGORIES = [
@@ -262,6 +264,7 @@ describe("product form", () => {
       description: "Espresso ve süt.",
       price: "135,50",
       isAvailable: true,
+      containsMilk: true,
     });
     const html = renderToStaticMarkup(<ProductFormView {...viewProps()} />);
     expect(html).toContain('<option value="sicak-kahveler" selected="">Sıcak Kahveler</option>');
@@ -273,7 +276,14 @@ describe("product form", () => {
   });
 
   it("starts a new product in the first category, open for sale and with empty fields", () => {
-    expect(emptyDraft(CATEGORIES)).toEqual({ categoryId: "sicak-kahveler", name: "", description: "", price: "", isAvailable: true });
+    expect(emptyDraft(CATEGORIES)).toEqual({
+      categoryId: "sicak-kahveler",
+      name: "",
+      description: "",
+      price: "",
+      isAvailable: true,
+      containsMilk: false,
+    });
     expect(emptyDraft([]).categoryId).toBe("");
   });
 
@@ -304,10 +314,24 @@ describe("product form", () => {
 
   it("builds a create body with integer priceKurus and trimmed text", () => {
     expect(
-      buildNewProduct({ categoryId: "sicak-kahveler", name: "  Flat White ", description: " Çift shot ", price: "140,5", isAvailable: false }),
+      buildNewProduct({
+        categoryId: "sicak-kahveler",
+        name: "  Flat White ",
+        description: " Çift shot ",
+        price: "140,5",
+        isAvailable: false,
+        containsMilk: true,
+      }),
     ).toEqual({
       ok: true,
-      value: { categoryId: "sicak-kahveler", name: "Flat White", description: "Çift shot", priceKurus: 14050, isAvailable: false },
+      value: {
+        categoryId: "sicak-kahveler",
+        name: "Flat White",
+        description: "Çift shot",
+        priceKurus: 14050,
+        isAvailable: false,
+        containsMilk: true,
+      },
     });
   });
 
@@ -325,6 +349,10 @@ describe("product form", () => {
       buildProductPatch(LATTE, { ...draftFromProduct(LATTE), name: "Latte", categoryId: "soguk-icecekler", isAvailable: false }),
     ).toEqual({ ok: true, value: { name: "Latte", categoryId: "soguk-icecekler", isAvailable: false } });
     expect(buildProductPatch(LATTE, { ...draftFromProduct(LATTE), description: "" })).toEqual({ ok: true, value: { description: "" } });
+    expect(buildProductPatch(LATTE, { ...draftFromProduct(LATTE), containsMilk: false })).toEqual({
+      ok: true,
+      value: { containsMilk: false },
+    });
   });
 
   it("sends nothing when the edit changes nothing (whitespace and an equal price included)", () => {

@@ -9,6 +9,7 @@ export interface MenuProduct {
   description: string;
   priceKurus: number;
   isAvailable: boolean;
+  containsMilk: boolean;
 }
 
 export interface MenuCategory {
@@ -25,13 +26,15 @@ interface MenuRow {
   description: string | null;
   price_kurus: number | null;
   is_available: number | null;
+  contains_milk: number | null;
 }
 
 // One query for the whole menu. The LEFT JOIN keeps a category that has no
 // products yet, so it still shows up (with an empty list).
 const MENU_QUERY = `
   SELECT c.id AS category_id, c.name AS category_name,
-         p.id AS product_id, p.name AS product_name, p.description, p.price_kurus, p.is_available
+         p.id AS product_id, p.name AS product_name, p.description, p.price_kurus, p.is_available,
+         p.contains_milk
   FROM categories c
   LEFT JOIN products p ON p.category_id = c.id
   ORDER BY c.sort_order, c.id, p.sort_order, p.id`;
@@ -53,6 +56,7 @@ export function getMenu(db: DatabaseSync): MenuCategory[] {
         description: row.description ?? "",
         priceKurus: Number(row.price_kurus),
         isAvailable: row.is_available === 1,
+        containsMilk: row.contains_milk === 1,
       });
     }
   }

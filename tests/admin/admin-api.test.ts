@@ -33,6 +33,7 @@ const NEW_PRODUCT = {
   description: "",
   priceKurus: 14050,
   isAvailable: true,
+  containsMilk: true,
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -134,6 +135,13 @@ describe("admin requests", () => {
     expect(outcome.kind).toBe("unknown");
   });
 
+  it("treats a product answer without a boolean containsMilk as unknown", async () => {
+    const { containsMilk: _omitted, ...withoutMilk } = NEW_PRODUCT;
+    for (const product of [{ id: "x", ...withoutMilk }, { id: "x", ...withoutMilk, containsMilk: 1 }]) {
+      expect((await submitNewProduct(NEW_PRODUCT, fakeFetch(jsonResponse(201, { product })))).kind).toBe("unknown");
+    }
+  });
+
   it("returns only the contract's product fields", async () => {
     const product = { id: "espresso", ...NEW_PRODUCT, internal: "x" };
     const outcome = await submitProductPatch("espresso", { name: "A" }, fakeFetch(jsonResponse(200, { product })));
@@ -206,7 +214,7 @@ describe("admin requests against the real /api/admin handlers", () => {
     const created = await submitNewProduct(NEW_PRODUCT, browserFetch);
     expect(created.kind).toBe("ok");
     const id = created.kind === "ok" ? created.value.id : "";
-    expect(readProductById(id)).toMatchObject({ name: "Flat White", priceKurus: 14050, isAvailable: true });
+    expect(readProductById(id)).toMatchObject({ name: "Flat White", priceKurus: 14050, isAvailable: true, containsMilk: true });
 
     expect(await submitProductPatch(id, { name: "Flat White Büyük", priceKurus: 15000 }, browserFetch)).toMatchObject({
       kind: "ok",

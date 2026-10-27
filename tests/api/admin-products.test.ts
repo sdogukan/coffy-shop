@@ -128,11 +128,16 @@ describe("/api/admin/products", () => {
     expect(Object.keys(itemRoute).sort()).toEqual(["PATCH", "dynamic"]);
   });
 
-  it("GET lists every category with every product, the unavailable ones included", async () => {
+  it("GET lists every category with every product, the unavailable ones included, and the available milk options", async () => {
     const { status, cacheControl, body } = await read(await list(cookie));
     expect(status).toBe(200);
     expect(cacheControl).toBe("no-store");
-    expect(body).toEqual({ categories: readMenu() });
+    expect(body).toEqual({
+      categories: readMenu(),
+      milkOptions: [{ id: "normal-sut", name: "Normal süt", surchargeKurus: 0, isDefault: true, isAvailable: true }],
+    });
+    const cappuccino = body.categories[0].products.find((product: { id: string }) => product.id === "cappuccino");
+    expect(cappuccino).toMatchObject({ containsMilk: true });
     const coldBrew = body.categories[1].products.find((product: { id: string }) => product.id === "cold-brew");
     expect(coldBrew).toMatchObject({ isAvailable: false, priceKurus: 15000 });
   });
@@ -208,7 +213,14 @@ describe("/api/admin/products", () => {
     const { status, cacheControl, body } = await read(await create(NEW_PRODUCT, { cookie }));
     expect(status).toBe(201);
     expect(cacheControl).toBe("no-store");
-    expect(body).toEqual({ product: { id: expect.stringMatching(/^[a-z0-9-]{1,64}$/), ...NEW_PRODUCT } });
+    expect(body).toEqual({ product: { id: expect.stringMatching(/^[a-z0-9-]{1,64}$/), ...NEW_PRODUCT, containsMilk: false } });
+    expect(readMenu()[0]?.products.at(-1)).toEqual(body.product);
+  });
+
+  it("POST stores and returns a sent containsMilk", async () => {
+    const { status, body } = await read(await create({ ...NEW_PRODUCT, containsMilk: true }, { cookie }));
+    expect(status).toBe(201);
+    expect(body.product).toMatchObject({ containsMilk: true });
     expect(readMenu()[0]?.products.at(-1)).toEqual(body.product);
   });
 
@@ -228,6 +240,8 @@ describe("/api/admin/products", () => {
     ["an oversized price", { priceKurus: 1_000_001 }, "invalid_product"],
     ["a string price", { priceKurus: "14000" }, "invalid_request"],
     ["a non-boolean isAvailable", { isAvailable: "true" }, "invalid_request"],
+    ["a non-boolean containsMilk", { containsMilk: "true" }, "invalid_request"],
+    ["a numeric containsMilk", { containsMilk: 1 }, "invalid_request"],
     ["a numeric name", { name: 7 }, "invalid_request"],
     ["an array category", { categoryId: ["sicak-kahveler"] }, "invalid_request"],
     ["an unknown field", { sortOrder: 1 }, "invalid_request"],
@@ -261,7 +275,20 @@ describe("/api/admin/products", () => {
         description: "Yoğun ve aromalı tek shot espresso.",
         priceKurus: 9500,
         isAvailable: true,
+        containsMilk: false,
       },
+    });
+  });
+
+  it("PATCH sets and clears containsMilk and returns it", async () => {
+    expect(await read(await patch("espresso", { containsMilk: true }, { cookie }))).toMatchObject({
+      status: 200,
+      body: { product: { id: "espresso", containsMilk: true, name: "Espresso" } },
+    });
+    expect(readMenu()[0]?.products.find((product) => product.id === "espresso")?.containsMilk).toBe(true);
+    expect(await read(await patch("espresso", { containsMilk: false }, { cookie }))).toMatchObject({
+      status: 200,
+      body: { product: { containsMilk: false } },
     });
   });
 
@@ -309,6 +336,7 @@ describe("/api/admin/products", () => {
   it.each([
     ["an empty body", {}, "invalid_request"],
     ["a non-boolean isAvailable", { isAvailable: 0 }, "invalid_request"],
+    ["a non-boolean containsMilk", { containsMilk: "false" }, "invalid_request"],
     ["an unknown category", { categoryId: "tatlilar" }, "invalid_product"],
     ["a zero price", { priceKurus: 0 }, "invalid_product"],
   ])("PATCH with %s answers 400 %s and writes nothing", async (_label, body, code) => {

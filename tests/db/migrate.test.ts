@@ -23,7 +23,7 @@ describe("runMigrations", () => {
     temp.cleanup();
   });
 
-  it("leaves exactly the catalog, order and admin session tables and records each migration once when run twice", () => {
+  it("leaves exactly the catalog, milk option, order and admin session tables and records each migration once when run twice", () => {
     const first = openDatabase({ create: true });
     expect(runMigrations(first)).toEqual(listMigrations());
     first.close();
@@ -31,7 +31,15 @@ describe("runMigrations", () => {
     const second = openDatabase({ create: true });
     try {
       expect(runMigrations(second)).toEqual([]);
-      expect(tableNames(second)).toEqual(["admin_sessions", "categories", "order_items", "orders", "products", "schema_migrations"]);
+      expect(tableNames(second)).toEqual([
+        "admin_sessions",
+        "categories",
+        "milk_options",
+        "order_items",
+        "orders",
+        "products",
+        "schema_migrations",
+      ]);
       const recorded = second.prepare("SELECT name FROM schema_migrations ORDER BY name").all();
       expect(recorded).toEqual(listMigrations().map((name) => ({ name })));
     } finally {

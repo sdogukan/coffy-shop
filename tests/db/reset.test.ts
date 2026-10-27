@@ -20,7 +20,9 @@ function catalog(db: DatabaseSync) {
   return {
     categories: db.prepare("SELECT id, name, sort_order FROM categories ORDER BY id").all(),
     products: db
-      .prepare("SELECT id, category_id, name, description, price_kurus, is_available, sort_order FROM products ORDER BY id")
+      .prepare(
+        "SELECT id, category_id, name, description, price_kurus, is_available, contains_milk, sort_order FROM products ORDER BY id",
+      )
       .all(),
   };
 }
@@ -36,6 +38,7 @@ function fixtureCatalog() {
       description: p.description,
       price_kurus: p.priceKurus,
       is_available: p.isAvailable,
+      contains_milk: p.containsMilk,
       sort_order: p.sortOrder,
     })),
   };

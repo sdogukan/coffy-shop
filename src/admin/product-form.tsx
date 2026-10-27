@@ -21,6 +21,7 @@ export interface ProductDraft {
   description: string;
   price: string;
   isAvailable: boolean;
+  containsMilk: boolean;
 }
 
 // editing: the form can be changed and sent. sending: a request is in
@@ -39,11 +40,19 @@ export function draftFromProduct(product: MenuProduct): ProductDraft {
     description: product.description,
     price: formatKurusForInput(product.priceKurus),
     isAvailable: product.isAvailable,
+    containsMilk: product.containsMilk,
   };
 }
 
 export function emptyDraft(categories: readonly CategoryOption[]): ProductDraft {
-  return { categoryId: categories[0]?.id ?? "", name: "", description: "", price: "", isAvailable: true };
+  return {
+    categoryId: categories[0]?.id ?? "",
+    name: "",
+    description: "",
+    price: "",
+    isAvailable: true,
+    containsMilk: false,
+  };
 }
 
 // The body of POST /api/admin/products: priceKurus is an integer. Name and
@@ -61,6 +70,7 @@ export function buildNewProduct(draft: ProductDraft): DraftResult<ProductFields>
       description: draft.description.trim(),
       priceKurus,
       isAvailable: draft.isAvailable,
+      containsMilk: draft.containsMilk,
     },
   };
 }
@@ -89,6 +99,9 @@ export function buildProductPatch(initial: MenuProduct, draft: ProductDraft): Dr
   }
   if (next.isAvailable !== initial.isAvailable) {
     patch.isAvailable = next.isAvailable;
+  }
+  if (next.containsMilk !== initial.containsMilk) {
+    patch.containsMilk = next.containsMilk;
   }
   return Object.keys(patch).length === 0 ? { ok: false, message: NO_CHANGES_MESSAGE } : { ok: true, value: patch };
 }

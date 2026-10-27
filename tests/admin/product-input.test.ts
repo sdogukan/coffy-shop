@@ -13,8 +13,21 @@ describe("parseProductCreate", () => {
   it("trims the name and description and keeps the other fields", () => {
     expect(parseProductCreate(VALID)).toEqual({
       ok: true,
-      value: { categoryId: "sicak-kahveler", name: "Flat White", description: "Çift shot.", priceKurus: 14000, isAvailable: true },
+      value: {
+        categoryId: "sicak-kahveler",
+        name: "Flat White",
+        description: "Çift shot.",
+        priceKurus: 14000,
+        isAvailable: true,
+        containsMilk: false,
+      },
     });
+  });
+
+  it("defaults a missing containsMilk to false and keeps a sent boolean", () => {
+    expect(parseProductCreate(VALID)).toMatchObject({ ok: true, value: { containsMilk: false } });
+    expect(parseProductCreate({ ...VALID, containsMilk: true })).toMatchObject({ ok: true, value: { containsMilk: true } });
+    expect(parseProductCreate({ ...VALID, containsMilk: false })).toMatchObject({ ok: true, value: { containsMilk: false } });
   });
 
   it("defaults a missing description to an empty string", () => {
@@ -42,6 +55,9 @@ describe("parseProductCreate", () => {
     ["a string price", { priceKurus: "14000" }, "invalid_request"],
     ["a string availability", { isAvailable: "true" }, "invalid_request"],
     ["a numeric availability", { isAvailable: 1 }, "invalid_request"],
+    ["a string containsMilk", { containsMilk: "true" }, "invalid_request"],
+    ["a numeric containsMilk", { containsMilk: 1 }, "invalid_request"],
+    ["a null containsMilk", { containsMilk: null }, "invalid_request"],
     ["a null name", { name: null }, "invalid_request"],
     ["a numeric description", { description: 5 }, "invalid_request"],
     ["a numeric category id", { categoryId: 1 }, "invalid_request"],
@@ -69,6 +85,7 @@ describe("parseProductCreate", () => {
 describe("parseProductPatch", () => {
   it("returns only the fields present", () => {
     expect(parseProductPatch({ isAvailable: false })).toEqual({ ok: true, value: { isAvailable: false } });
+    expect(parseProductPatch({ containsMilk: true })).toEqual({ ok: true, value: { containsMilk: true } });
     expect(parseProductPatch({ name: " Doppio ", priceKurus: 12000 })).toEqual({
       ok: true,
       value: { name: "Doppio", priceKurus: 12000 },
@@ -79,6 +96,7 @@ describe("parseProductPatch", () => {
     ["an empty body", {}, "invalid_request"],
     ["only an unknown field", { price: 100 }, "invalid_request"],
     ["a non-boolean availability", { isAvailable: "false" }, "invalid_request"],
+    ["a non-boolean containsMilk", { containsMilk: 0 }, "invalid_request"],
     ["a negative price", { priceKurus: -1 }, "invalid_product"],
     ["a 61-character name", { name: "a".repeat(61) }, "invalid_product"],
   ])("rejects %s", (_label, body, code) => {

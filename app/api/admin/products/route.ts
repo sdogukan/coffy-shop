@@ -3,6 +3,7 @@ import { PRODUCT_INPUT_ERRORS, parseProductCreate } from "../../../../src/admin/
 import { requireAdminRequest } from "../../../../src/admin/session.ts";
 import { addProduct } from "../../../../src/db/admin-products.ts";
 import { readMenu } from "../../../../src/db/menu.ts";
+import { readAvailableMilkOptions } from "../../../../src/db/milk-options.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -10,14 +11,15 @@ export const dynamic = "force-dynamic";
 // bodies before JSON.parse.
 const MAX_BODY_LENGTH = 8192;
 
-// Every category with every product, the unavailable ones included.
+// Every category with every product, the unavailable ones included, and the
+// milk options currently offered (Normal süt first).
 export function GET(request: Request) {
   const denied = requireAdminRequest(request, { mutation: false });
   if (denied !== null) {
     return denied;
   }
   try {
-    return json({ categories: readMenu() }, 200);
+    return json({ categories: readMenu(), milkOptions: readAvailableMilkOptions() }, 200);
   } catch (error) {
     console.error(`Admin product list failed: ${describeError(error)}`);
     return adminError("server_error", 500);

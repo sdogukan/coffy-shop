@@ -8,14 +8,14 @@ const MENU: MenuCategory[] = [
     id: "sicak-kahveler",
     name: "Sıcak Kahveler",
     products: [
-      { id: "espresso", categoryId: "sicak-kahveler", name: "Espresso", description: "Yoğun tek shot.", priceKurus: 9000, isAvailable: true },
+      { id: "espresso", categoryId: "sicak-kahveler", name: "Espresso", description: "Yoğun tek shot.", priceKurus: 9000, isAvailable: true, containsMilk: false },
     ],
   },
   {
     id: "soguk-icecekler",
     name: "Soğuk İçecekler",
     products: [
-      { id: "cold-brew", categoryId: "soguk-icecekler", name: "Cold Brew", description: "Soğuk demleme.", priceKurus: 12050, isAvailable: false },
+      { id: "cold-brew", categoryId: "soguk-icecekler", name: "Cold Brew", description: "Soğuk demleme.", priceKurus: 12050, isAvailable: false, containsMilk: false },
     ],
   },
   { id: "tatlilar", name: "Tatlılar", products: [] },
@@ -54,7 +54,7 @@ describe("MenuView", () => {
         id: "c",
         name: "Kategori",
         products: [
-          { id: "p", categoryId: "c", name: "<script>x</script>", description: "<b>d</b>", priceKurus: 100, isAvailable: true },
+          { id: "p", categoryId: "c", name: "<script>x</script>", description: "<b>d</b>", priceKurus: 100, isAvailable: true, containsMilk: false },
         ],
       },
     ];

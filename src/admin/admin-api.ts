@@ -103,14 +103,15 @@ function isMenuProduct(value: unknown): value is MenuProduct {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const { id, categoryId, name, description, priceKurus, isAvailable } = value as Record<string, unknown>;
+  const { id, categoryId, name, description, priceKurus, isAvailable, containsMilk } = value as Record<string, unknown>;
   return (
     typeof id === "string" &&
     typeof categoryId === "string" &&
     typeof name === "string" &&
     typeof description === "string" &&
     Number.isSafeInteger(priceKurus) &&
-    typeof isAvailable === "boolean"
+    typeof isAvailable === "boolean" &&
+    typeof containsMilk === "boolean"
   );
 }
 
@@ -127,6 +128,7 @@ function readProduct(body: unknown): MenuProduct | null {
         description: product.description,
         priceKurus: product.priceKurus,
         isAvailable: product.isAvailable,
+        containsMilk: product.containsMilk,
       }
     : null;
 }

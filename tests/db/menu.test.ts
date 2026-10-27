@@ -66,6 +66,7 @@ describe("getMenu", () => {
       description: "Yoğun ve aromalı tek shot espresso.",
       priceKurus: 9000,
       isAvailable: true,
+      containsMilk: false,
     });
     for (const product of products) {
       expect(Number.isInteger(product.priceKurus)).toBe(true);
@@ -80,6 +81,18 @@ describe("getMenu", () => {
     expect(byId.get("espresso")?.isAvailable).toBe(true);
     for (const product of products) {
       expect(typeof product.isAvailable).toBe("boolean");
+    }
+  });
+
+  it("maps contains_milk 0/1 to a boolean containsMilk: the seeded milk drinks are marked", () => {
+    const products = getMenu(db).flatMap((category) => category.products);
+    expect(products.filter((product) => product.containsMilk).map((product) => product.id)).toEqual([
+      "cappuccino",
+      "caffe-latte",
+      "iced-latte",
+    ]);
+    for (const product of products) {
+      expect(typeof product.containsMilk).toBe("boolean");
     }
   });
 

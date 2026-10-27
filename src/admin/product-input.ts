@@ -26,7 +26,7 @@ export type ProductInputResult<T> =
 
 type FieldResult<T> = { ok: true; value: T } | { ok: false; code: "invalid_request" | "invalid_product"; error: string };
 
-const FIELDS = ["categoryId", "name", "description", "priceKurus", "isAvailable"] as const;
+const FIELDS = ["categoryId", "name", "description", "priceKurus", "isAvailable", "containsMilk"] as const;
 
 function invalidRequest<T>(): FieldResult<T> {
   return { ok: false, code: "invalid_request", error: PRODUCT_INPUT_ERRORS.invalid_request };
@@ -43,7 +43,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 // Counts characters the way SQLite's length() does (code points). A string
 // longer than twice the limit in UTF-16 units is over it in code points too,
 // which skips the spread for oversized input.
-function characterCount(value: string, max: number): number {
+export function characterCount(value: string, max: number): number {
   return value.length > max * 2 ? value.length : [...value].length;
 }
 
@@ -80,6 +80,7 @@ function parseField(field: (typeof FIELDS)[number], value: unknown): FieldResult
         ? { ok: true, value }
         : invalidProduct("invalid_price");
     case "isAvailable":
+    case "containsMilk":
       return typeof value === "boolean" ? { ok: true, value } : invalidRequest();
   }
 }
@@ -106,17 +107,17 @@ function parseFields(body: unknown): FieldResult<ProductPatch> {
 }
 
 // POST body: categoryId, name, priceKurus and isAvailable are required;
-// description is optional and defaults to "".
+// description is optional and defaults to "", containsMilk to false.
 export function parseProductCreate(body: unknown): ProductInputResult<ProductFields> {
   const parsed = parseFields(body);
   if (!parsed.ok) {
     return parsed;
   }
-  const { categoryId, name, description = "", priceKurus, isAvailable } = parsed.value;
+  const { categoryId, name, description = "", priceKurus, isAvailable, containsMilk = false } = parsed.value;
   if (categoryId === undefined || name === undefined || priceKurus === undefined || isAvailable === undefined) {
     return invalidRequest();
   }
-  return { ok: true, value: { categoryId, name, description, priceKurus, isAvailable } };
+  return { ok: true, value: { categoryId, name, description, priceKurus, isAvailable, containsMilk } };
 }
 
 // PATCH body: any non-empty subset of the fields; only those are updated.
