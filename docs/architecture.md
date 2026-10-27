@@ -9,7 +9,7 @@ _A field marked **Repos:** applies only to those repositories; a field without t
 **Repos:** coffy-shop
 
 One Next.js 16 application (pages + route handlers) running as a single Node 24 process.
-One SQLite database file (node:sqlite, WAL) outside the release directory; 6 tables incl. schema_migrations.
+One SQLite database file (node:sqlite, WAL) outside the release directory; 7 tables incl. schema_migrations.
 No cache layer: every page and API response is read fresh from SQLite and sent with no-store.
 Auth: one env-configured staff account (scrypt) with SHA-256-hashed session tokens in SQLite; customers are anonymous and reach their order only through a 256-bit tracking token.
 Deployed by GitHub Actions to an existing shared AWS Lightsail host: systemd on 127.0.0.1:3002 behind shared Caddy TLS.
@@ -79,13 +79,17 @@ _The proxy is not the security gate; requireAdminPage and requireAdminRequest ar
 
 **Repos:** coffy-shop
 
-1. /yonetim/urunler lists every category with every product, unavailable ones included.
+1. /yonetim/urunler lists every category with every product, unavailable ones included; milk products show a "Sütlü" status.
 2. The availability toggle sends PATCH /api/admin/products/<id> {isAvailable}.
-3. /yonetim/urunler/yeni posts POST /api/admin/products {categoryId, name, description?, priceKurus, isAvailable}.
-4. /yonetim/urunler/<id> sends PATCH with only the changed fields.
-5. Validation: name 1-60, description <=200, price 1..1,000,000 kuruş (0,01-10.000,00 TL), category must exist, unknown fields rejected. There is no DELETE.
+3. /yonetim/urunler/yeni posts POST /api/admin/products {categoryId, name, description?, priceKurus, isAvailable, containsMilk?}; containsMilk ("Sütlü ürün" checkbox) defaults to false.
+4. /yonetim/urunler/<id> sends PATCH with only the changed fields, containsMilk included.
+5. Validation: name 1-60, description <=200, price 1..1,000,000 kuruş (0,01-10.000,00 TL), containsMilk boolean, category must exist, unknown fields rejected. There is no DELETE.
+6. /yonetim/sut-secenekleri (admin bar link "Süt seçenekleri") lists every milk option, removed ones included, Normal süt first and read-only as "Ücretsiz".
+7. Adding an option posts POST /api/admin/milk-options {name, surchargeKurus}: name 1-60, surcharge 1..1,000,000 kuruş (the product price bounds); the option is created available, at the end of the list.
+8. Changing an option sends PATCH /api/admin/milk-options/<id> with surchargeKurus and/or isAvailable ("Satıştan kaldır" / "Satışa aç" sends the target value). Normal süt is refused (400 default_milk_option) and stays 0 kuruş and available. There is no DELETE.
+9. GET /api/admin/products returns {categories, milkOptions}: milkOptions holds only the available options, Normal süt first. Each option has one surcharge that applies to every milk product.
 
-_Orders keep name/price snapshots, so product edits never change placed orders._
+_Orders keep name/price snapshots, so product edits and milk option changes never change placed orders. Normal süt comes from migration 0005 because the seed runs only for a new database; the same migration marks Cappuccino, Caffè Latte and Iced Latte as milk products on an existing database, and the catalog fixtures do so on a new one. Showing milk options on the customer menu and pricing them into orders is not implemented yet; the issue assigns it to a separate follow-up (ISSUE-2)._
 
 ### Flow: Staff order status advance (MVP: order preparation status)
 
@@ -149,13 +153,14 @@ _One deployable service; the rest are tooling or external systems._
 **Repos:** coffy-shop
 
 - categories — menu categories with display order
-- products — menu products: category, name, description, price in kuruş, availability, display order
+- products — menu products: category, name, description, price in kuruş, availability, milk flag, display order
+- milk_options — staff-managed milk choices: name, surcharge in kuruş, default flag (Normal süt), availability, display order
 - orders — pickup orders: reference, tracking token, status, customer name, note, total, idempotency key + payload fingerprint, created/updated time
 - order_items — order lines with product name and unit price snapshots
 - admin_sessions — SHA-256 hashes of staff session tokens with expiry and revocation time
 - schema_migrations — applied migration file names
 
-_Created by migrations 0001-0004 plus the runner's own schema_migrations table._
+_Created by migrations 0001-0005 plus the runner's own schema_migrations table._
 
 ### Connection diagram
 
@@ -220,9 +225,10 @@ _Relational SQLite STRICT table; the template's PK/SK columns are adapted to col
 | description | TEXT | NOT NULL DEFAULT '' | app limits to 200 chars |
 | price_kurus | INTEGER | NOT NULL, >= 0 | app limits 1..1,000,000 |
 | is_available | INTEGER | NOT NULL DEFAULT 1, IN (0,1) | 0 = off the menu |
+| contains_milk | INTEGER | NOT NULL DEFAULT 0, IN (0,1) | 1 = milk drink (migration 0005) |
 | sort_order | INTEGER | NOT NULL DEFAULT 0 | order inside category |
 
-_Products are never deleted through the app; availability is the off switch._
+_Products are never deleted through the app; availability is the off switch. contains_milk was added in place with DEFAULT 0, so the previous release's INSERT (without the column) keeps working after a rollback._
 
 ### orders table
 
@@ -290,6 +296,8 @@ _Created by runMigrations; each file commits together with its row in one BEGIN 
 | Index | Table | Columns | Purpose |
 | --- | --- | --- | --- |
 | products_category_id | products | category_id | menu grouped by category |
+| milk_options PRIMARY KEY | milk_options | id | option lookup on change and the unused-id check on create |
+| milk_options_single_default (partial UNIQUE) | milk_options | is_default WHERE is_default = 1 | at most one default option |
 | orders.reference (UNIQUE) | orders | reference | unique staff-facing reference |
 | orders.tracking_token (UNIQUE) | orders | tracking_token | customer tracking page lookup |
 | orders.idempotency_key (UNIQUE) | orders | idempotency_key | replay / conflict detection on checkout |
@@ -316,6 +324,22 @@ _SQLite has no GSIs; the field records the secondary and unique indexes that ser
 
 _SQLite has no native TTL; expiry is enforced by queries and scripts._
 
+### milk_options table
+
+**Repos:** coffy-shop
+
+| Column | Type | Key / Constraint | Notes |
+| --- | --- | --- | --- |
+| id | TEXT | PRIMARY KEY, length 1-64 | normal-sut for the default; 16 hex characters for staff-added options |
+| name | TEXT | NOT NULL, trimmed length 1-60 | e.g. Normal süt |
+| surcharge_kurus | INTEGER | NOT NULL, >= 0 | default row 0; app limits staff options to 1..1,000,000 |
+| is_default | INTEGER | NOT NULL DEFAULT 0, IN (0,1); partial UNIQUE where 1 | only Normal süt |
+| is_available | INTEGER | NOT NULL DEFAULT 1, IN (0,1) | 0 = removed from sale |
+| sort_order | INTEGER | NOT NULL DEFAULT 0 | staff order; new options appended |
+| (table CHECK) | - | is_default = 0 OR (surcharge_kurus = 0 AND is_available = 1) | the default stays free and available |
+
+_Created by migration 0005 together with the Normal süt row: the seed runs only for a new database, so the row must come from the migration. Options are never deleted; one surcharge per option applies to every milk product. Nothing references orders: order lines keep their own snapshots. Updates skip a default row inside the same BEGIN IMMEDIATE transaction, on top of the table CHECK._
+
 ## API Endpoint List
 
 ### API Endpoint List
@@ -329,9 +353,11 @@ _SQLite has no native TTL; expiry is enforced by queries and scripts._
 | GET | /api/version | Build commit SHA | No |
 | POST | /api/admin/login | Start a staff session; sets HttpOnly cookie | No (same Origin, rate limited) |
 | POST | /api/admin/logout | Revoke the session, clear the cookie (204) | No (same Origin) |
-| GET | /api/admin/products | Every category with every product | Yes |
+| GET | /api/admin/products | Every category with every product (incl. containsMilk) and the available milk options, Normal süt first | Yes |
 | POST | /api/admin/products | Create a product | Yes + same Origin |
 | PATCH | /api/admin/products/{id} | Update the sent fields of one product | Yes + same Origin |
+| POST | /api/admin/milk-options | Add a milk option {name, surchargeKurus}; 201 {milkOption} | Yes + same Origin |
+| PATCH | /api/admin/milk-options/{id} | Update surchargeKurus and/or isAvailable; Normal süt refused (400 default_milk_option); 200 {milkOption} | Yes + same Origin |
 | GET | /api/admin/orders | Every order, newest first, without tracking token | Yes |
 | GET | /api/admin/orders/{id} | One order with item snapshots and note | Yes |
 | PATCH | /api/admin/orders/{id}/status | Move one step forward: body {to} | Yes + same Origin |
@@ -368,7 +394,7 @@ _Avoids stale prices/availability and stale order status; acceptable for a singl
 | XSS | React output escaping; no dangerouslySetInnerHTML in app/ or src/ |
 | Fail closed | Missing/malformed admin env disables login (503) and rejects every session; public menu and ordering keep working |
 | Customer order access | 256-bit tracking token is the only key; no lookup by reference; unknown and malformed tokens give the same 404; page is noindex + no-referrer |
-| Input limits | Body size caps per endpoint (64 KB orders, 16 KB login, 8 KB products, 256 B status); strict schema, unknown fields rejected |
+| Input limits | Body size caps per endpoint (64 KB orders, 16 KB login, 8 KB products, 1 KB milk options, 256 B status); strict schema, unknown fields rejected |
 | Network exposure | Server listens on 127.0.0.1 only; Caddy terminates TLS; systemd hardening (NoNewPrivileges, ProtectSystem=strict, ProtectHome, PrivateTmp) |
 | Deploy secrets | GitHub Demo environment secrets; dedicated ed25519 key with restrict; pinned host key; sudo limited to the deploy wrapper; env file root:coffy-shop 0640 |
 
