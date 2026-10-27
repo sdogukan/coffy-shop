@@ -29,6 +29,7 @@ _App Router page.tsx files under app/._
 | 4 | Ürünü düzenle (edit product) | /yonetim/urunler/{id} |
 | 5 | Siparişler (order list) | /yonetim/siparisler |
 | 6 | Sipariş detayı (order detail) | /yonetim/siparisler/{id} |
+| 7 | Süt seçenekleri (milk options) | /yonetim/sut-secenekleri |
 
 _Protected pages call requireAdminPage; proxy.ts matches /yonetim/:path* and lets the login page through._
 
@@ -232,13 +233,18 @@ _Messages come from ADMIN_ERRORS in src/admin/http.ts._
 +----------------------------------+
 | Coffy Shop            Sepet      |
 +----------------------------------+
-| Yönetim  Ürünler Siparişler [Çıkış yap] |  dark admin bar
+| Yönetim  Ürünler Siparişler Süt seçenekleri [Çıkış yap] |  dark admin bar
 +----------------------------------+
 | Ürünler                          |
 | [ Yeni ürün ekle ]               |
 | Sıcak Kahveler                   |
 | +------------------------------+ |
 | | Espresso        ₺90,00       | |
+| | Satışta  ( satışı kapat )    | |
+| | Düzenle                      | |
+| +------------------------------+ |
+| | Cappuccino      ₺130,00      | |
+| | Sütlü                        | |
 | | Satışta  ( satışı kapat )    | |
 | | Düzenle                      | |
 | +------------------------------+ |
@@ -252,7 +258,7 @@ _AdminBar + AdminProductList + AvailabilityToggle; at >= 30rem each card is one 
 **Repos:** coffy-shop
 
 States: no categories -> "Henüz kategori yok."; empty category -> "Bu kategoride henüz ürün yok."; toggle pending -> button disabled; toggle error -> message (role=alert); 401 -> redirect to login.
-Closed products show their status in red.
+Closed products show their status in red. Milk products show a "Sütlü" status text (.admin-status) under the price.
 Desktop delta (>= 30rem): info, toggle and edit link side by side.
 
 _Read from component code and globals.css admin rules._
@@ -271,6 +277,7 @@ _Read from component code and globals.css admin rules._
 | | Açıklama   [__________]      | |
 | | Fiyat (TL) [______]          | |
 | | [x] Satışta                  | |
+| | [x] Sütlü ürün               | |
 | | (error, role=alert)          | |
 | | [ Vazgeç ]  [ Ürünü ekle ]   | |
 | |      or [ Değişiklikleri kaydet ] |
@@ -285,6 +292,7 @@ _One ProductForm component for both pages._
 **Repos:** coffy-shop
 
 Price input is TRY text converted to kuruş (try-price-input), valid 0,01-10.000,00 TL.
+"Sütlü ürün" checkbox (containsMilk) next to "Satışta": unchecked on a new product, the stored value on edit; sent only when changed.
 Validation messages: invalid_name, invalid_description, invalid_price, unknown_category (Turkish texts in PRODUCT_INPUT_ERRORS).
 States: editing; sending (submit disabled); error; success -> back to /yonetim/urunler. Unknown product id -> not found.
 
@@ -348,6 +356,48 @@ States: pending (button disabled); success -> shown status updates to the stored
 Malformed or unknown id -> not found.
 
 _applyStatusOutcome only changes the shown status on 200._
+
+### Admin milk options — wireframe
+
+**Repos:** coffy-shop
+
+```
++----------------------------------+
+| (admin bar)                      |
+| Süt seçenekleri                  |
+| +------------------------------+ |
+| | Normal süt                   | |
+| | Ücretsiz                     | |
+| +------------------------------+ |
+| | Yulaf sütü      +₺25,50      | |
+| | Satışta                      | |
+| | Ek ücret (TL) [25,50]        | |
+| | [ Ek ücreti kaydet ]         | |
+| | [ Satıştan kaldır ]          | |
+| | (error, role=alert)          | |
+| +------------------------------+ |
+| Yeni süt seçeneği                |
+| Süt seçeneği adı [__________]    |
+| Ek ücret (TL)    [25,50]         |
+| (error, role=alert)              |
+| [ Süt seçeneğini ekle ]          |
+|   or [ Listeyi yenile ]          |
++----------------------------------+
+```
+
+_AdminBar + MilkOptionList + MilkOptionCreateForm on a separate page linked from the admin bar (the design reference allowed a page or a section on Ürünler). Yulaf sütü is an example row: only Normal süt exists until staff add options._
+
+### Admin milk options — notes
+
+**Repos:** coffy-shop
+
+Normal süt (default) shows "Ücretsiz" with no surcharge input and no removal control, so nothing on the page can change it.
+Other options: name, +surcharge, status "Satışta" or "Satıştan kaldırıldı" (red, like closed products); "Ek ücret (TL)" is TRY text (try-price-input) saved with "Ek ücreti kaydet"; "Satıştan kaldır" / "Satışa aç" sends the target availability. Both controls are disabled while a request is pending and the row shows only the server's answer.
+Add form "Yeni süt seçeneği": "Süt seçeneği adı" (max 60) and "Ek ücret (TL)" with the hint "Kuruşu virgülle ayırın, örneğin 25,50."; success reloads the page so the list shows the new option; an unknown outcome locks the form and offers "Listeyi yenile" instead of a resend.
+Errors: invalid TRY text shows the format message without a request; a server 400 shows its Turkish message in .form-error role=alert; 401 -> /yonetim/giris.
+Layout: the task design reference asks for mobile-first single column with one row at >= 30rem. Implementation gap: app/globals.css has no >= 30rem rule for .admin-milk-option, so the card stays a single column at every width.
+
+_A create has no idempotency key, so the form never resends on its own; absolute target values keep two tabs from flipping each other's state._
 
 ## Design System
 

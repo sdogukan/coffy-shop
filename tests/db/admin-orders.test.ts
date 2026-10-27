@@ -20,6 +20,7 @@ import { DATABASE_PATH_ENV, openDatabase } from "../../src/db/connection.ts";
 import { MIGRATIONS_DIR, listMigrations, runMigrations } from "../../src/db/migrate.ts";
 import { createOrder, findOrderByTrackingToken, type OrderStatus } from "../../src/db/orders.ts";
 import { parseOrderRequest } from "../../src/orders/order-request.ts";
+import { seedCatalogBefore0005 } from "../helpers/legacy-catalog.ts";
 import { createTempDatabase, openMigratedDatabase, type TempDatabase } from "../helpers/temp-database.ts";
 
 const WORKER = fileURLToPath(new URL("../helpers/advance-order-status-worker.ts", import.meta.url));
@@ -318,11 +319,13 @@ describe("migration 0004_order_updated_at", () => {
     const db = openDatabase({ create: true });
     try {
       runMigrations(db, earlierMigrations);
-      seedCatalog(db);
+      seedCatalogBefore0005(db);
       const existing = place(db, "Ayşe", "pre_migration_key_001", "Az şekerli");
       const before = findOrderByTrackingToken(db, existing.trackingToken);
 
-      expect(runMigrations(db)).toEqual(["0004_order_updated_at.sql"]);
+      // Only 0004 is added, so the check is about this migration alone.
+      copyFileSync(join(MIGRATIONS_DIR, "0004_order_updated_at.sql"), join(earlierMigrations, "0004_order_updated_at.sql"));
+      expect(runMigrations(db, earlierMigrations)).toEqual(["0004_order_updated_at.sql"]);
 
       const column = (db.prepare("PRAGMA table_info(orders)").all() as { name: string; notnull: number; dflt_value: unknown }[]).find(
         (info) => info.name === "updated_at",

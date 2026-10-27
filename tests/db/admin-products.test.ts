@@ -21,6 +21,7 @@ const NEW_PRODUCT = {
   description: "Çift shot espresso ve ince süt.",
   priceKurus: 14000,
   isAvailable: true,
+  containsMilk: true,
 };
 
 function orderRequest(productId: string, idempotencyKey: string): OrderRequest {
@@ -58,14 +59,15 @@ describe("admin product writes", () => {
     expect(generateProductId()).not.toBe(id);
   });
 
-  it("creates a product at the end of its category with 0/1 availability", () => {
+  it("creates a product at the end of its category with 0/1 availability and milk flag", () => {
     const result = createProduct(db, { ...NEW_PRODUCT, isAvailable: false }, () => "flat-white");
     expect(result).toEqual({
       status: "created",
       product: { id: "flat-white", ...NEW_PRODUCT, isAvailable: false },
     });
-    expect(db.prepare("SELECT is_available, sort_order FROM products WHERE id = 'flat-white'").get()).toEqual({
+    expect(db.prepare("SELECT is_available, contains_milk, sort_order FROM products WHERE id = 'flat-white'").get()).toEqual({
       is_available: 0,
+      contains_milk: 1,
       sort_order: 6,
     });
     expect(getMenu(db)[0]?.products.at(-1)?.id).toBe("flat-white");
@@ -99,12 +101,27 @@ describe("admin product writes", () => {
         description: "Yoğun ve aromalı tek shot espresso.",
         priceKurus: 9500,
         isAvailable: true,
+        containsMilk: false,
       },
     });
     // A toggle from another tab keeps the price edited above.
     const toggled = updateProduct(db, "espresso", { isAvailable: false });
     expect(toggled.status === "updated" && toggled.product).toMatchObject({ priceKurus: 9500, isAvailable: false });
     expect(db.prepare("SELECT is_available FROM products WHERE id = 'espresso'").get()).toEqual({ is_available: 0 });
+  });
+
+  it("sets and clears containsMilk without touching the other fields", () => {
+    expect(updateProduct(db, "espresso", { containsMilk: true })).toMatchObject({
+      status: "updated",
+      product: { containsMilk: true, name: "Espresso", priceKurus: 9000, isAvailable: true },
+    });
+    expect(db.prepare("SELECT contains_milk FROM products WHERE id = 'espresso'").get()).toEqual({ contains_milk: 1 });
+    expect(menuProduct(db, "espresso")?.containsMilk).toBe(true);
+    expect(updateProduct(db, "cappuccino", { containsMilk: false })).toMatchObject({
+      status: "updated",
+      product: { containsMilk: false },
+    });
+    expect(menuProduct(db, "cappuccino")?.containsMilk).toBe(false);
   });
 
   it("moves a product to another existing category and refuses an unknown one", () => {

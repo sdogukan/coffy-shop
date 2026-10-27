@@ -39,6 +39,7 @@ const LATTE: MenuProduct = {
   description: "Espresso ve süt.",
   priceKurus: 13550,
   isAvailable: true,
+  containsMilk: true,
 };
 
 const COLD_BREW: MenuProduct = {
@@ -48,6 +49,7 @@ const COLD_BREW: MenuProduct = {
   description: "",
   priceKurus: 15000,
   isAvailable: false,
+  containsMilk: false,
 };
 
 const CATEGORIES = [
@@ -140,11 +142,12 @@ describe("login form", () => {
 });
 
 describe("admin bar and logout", () => {
-  it("shows links to the products and the orders and a Çıkış button that is a button, not a link", () => {
+  it("shows links to the products, the orders and the milk options and a Çıkış button that is a button, not a link", () => {
     const html = renderToStaticMarkup(<AdminBar />);
     expect(html).toContain(
       '<div class="admin-bar-links"><a class="admin-bar-title" href="/yonetim/urunler">Yönetim · Ürünler</a>' +
-        '<a class="admin-bar-title" href="/yonetim/siparisler">Siparişler</a></div>',
+        '<a class="admin-bar-title" href="/yonetim/siparisler">Siparişler</a>' +
+        '<a class="admin-bar-title" href="/yonetim/sut-secenekleri">Süt seçenekleri</a></div>',
     );
     expect(html).toContain('<button type="button" class="admin-bar-logout">Çıkış</button>');
     expect(html).not.toContain('href="/api/admin/logout"');
@@ -233,6 +236,14 @@ describe("admin product list", () => {
     expect(html).toContain("Bu kategoride henüz ürün yok.");
   });
 
+  it("marks only the milk drinks as Sütlü", () => {
+    const html = renderToStaticMarkup(<AdminProductList menu={MENU} />);
+    const latte = html.slice(html.indexOf("<h3>Caffè Latte</h3>"), html.indexOf("</li>"));
+    expect(latte).toContain('<p class="product-price">₺135,50</p><p class="admin-status">Sütlü</p>');
+    const coldBrew = html.slice(html.indexOf("<h3>Cold Brew</h3>"));
+    expect(coldBrew).not.toContain("Sütlü");
+  });
+
   it("encodes the product id in the edit link", () => {
     const html = renderToStaticMarkup(
       <AdminProductList menu={[{ id: "c", name: "C", products: [{ ...LATTE, id: "a b/c" }] }]} />,
@@ -262,6 +273,7 @@ describe("product form", () => {
       description: "Espresso ve süt.",
       price: "135,50",
       isAvailable: true,
+      containsMilk: true,
     });
     const html = renderToStaticMarkup(<ProductFormView {...viewProps()} />);
     expect(html).toContain('<option value="sicak-kahveler" selected="">Sıcak Kahveler</option>');
@@ -269,11 +281,26 @@ describe("product form", () => {
     expect(html).toMatch(/<textarea id="product-description"[^>]*maxLength="200">Espresso ve süt.<\/textarea>/);
     expect(html).toMatch(/<input id="product-price" type="text" inputMode="decimal"[^>]*name="price" value="135,50"\/>/);
     expect(html).toMatch(/<input type="checkbox" name="isAvailable" checked=""\/>/);
+    expect(html).toContain('<label class="admin-checkbox"><input type="checkbox" name="containsMilk" checked=""/>Sütlü ürün</label>');
     expect(html).toContain('<button type="submit" class="button">Değişiklikleri kaydet</button>');
   });
 
+  it("starts the Sütlü ürün checkbox from the stored value, unchecked for a new product", () => {
+    const coldBrew = renderToStaticMarkup(<ProductFormView {...viewProps({ draft: draftFromProduct(COLD_BREW) })} />);
+    expect(coldBrew).toContain('<input type="checkbox" name="containsMilk"/>Sütlü ürün</label>');
+    const fresh = renderToStaticMarkup(<ProductFormView {...viewProps({ draft: emptyDraft(CATEGORIES) })} />);
+    expect(fresh).toContain('<input type="checkbox" name="containsMilk"/>Sütlü ürün</label>');
+  });
+
   it("starts a new product in the first category, open for sale and with empty fields", () => {
-    expect(emptyDraft(CATEGORIES)).toEqual({ categoryId: "sicak-kahveler", name: "", description: "", price: "", isAvailable: true });
+    expect(emptyDraft(CATEGORIES)).toEqual({
+      categoryId: "sicak-kahveler",
+      name: "",
+      description: "",
+      price: "",
+      isAvailable: true,
+      containsMilk: false,
+    });
     expect(emptyDraft([]).categoryId).toBe("");
   });
 
@@ -296,18 +323,35 @@ describe("product form", () => {
     (price?.props.onChange as (event: unknown) => void)({ target: { value: "99,9" } });
     const checkbox = findElement(tree, (element) => element.props.name === "isAvailable");
     (checkbox?.props.onChange as (event: unknown) => void)({ target: { checked: false } });
+    const milk = findElement(tree, (element) => element.props.name === "containsMilk");
+    (milk?.props.onChange as (event: unknown) => void)({ target: { checked: false } });
     expect(onChange.mock.calls.map(([draft]) => draft)).toEqual([
       { ...draftFromProduct(LATTE), price: "99,9" },
       { ...draftFromProduct(LATTE), isAvailable: false },
+      { ...draftFromProduct(LATTE), containsMilk: false },
     ]);
   });
 
   it("builds a create body with integer priceKurus and trimmed text", () => {
     expect(
-      buildNewProduct({ categoryId: "sicak-kahveler", name: "  Flat White ", description: " Çift shot ", price: "140,5", isAvailable: false }),
+      buildNewProduct({
+        categoryId: "sicak-kahveler",
+        name: "  Flat White ",
+        description: " Çift shot ",
+        price: "140,5",
+        isAvailable: false,
+        containsMilk: true,
+      }),
     ).toEqual({
       ok: true,
-      value: { categoryId: "sicak-kahveler", name: "Flat White", description: "Çift shot", priceKurus: 14050, isAvailable: false },
+      value: {
+        categoryId: "sicak-kahveler",
+        name: "Flat White",
+        description: "Çift shot",
+        priceKurus: 14050,
+        isAvailable: false,
+        containsMilk: true,
+      },
     });
   });
 
@@ -325,6 +369,22 @@ describe("product form", () => {
       buildProductPatch(LATTE, { ...draftFromProduct(LATTE), name: "Latte", categoryId: "soguk-icecekler", isAvailable: false }),
     ).toEqual({ ok: true, value: { name: "Latte", categoryId: "soguk-icecekler", isAvailable: false } });
     expect(buildProductPatch(LATTE, { ...draftFromProduct(LATTE), description: "" })).toEqual({ ok: true, value: { description: "" } });
+    expect(buildProductPatch(LATTE, { ...draftFromProduct(LATTE), containsMilk: false })).toEqual({
+      ok: true,
+      value: { containsMilk: false },
+    });
+    expect(buildProductPatch(COLD_BREW, { ...draftFromProduct(COLD_BREW), containsMilk: true })).toEqual({
+      ok: true,
+      value: { containsMilk: true },
+    });
+    // A rename never carries the milk flag, so it cannot reset one changed in another tab.
+    expect(buildProductPatch(LATTE, { ...draftFromProduct(LATTE), name: "Latte" })).toEqual({ ok: true, value: { name: "Latte" } });
+  });
+
+  it("sends the Sütlü ürün state on create, unchecked as false", () => {
+    const draft = { ...emptyDraft(CATEGORIES), name: "Su", price: "20" };
+    expect(buildNewProduct(draft)).toMatchObject({ ok: true, value: { containsMilk: false } });
+    expect(buildNewProduct({ ...draft, containsMilk: true })).toMatchObject({ ok: true, value: { containsMilk: true } });
   });
 
   it("sends nothing when the edit changes nothing (whitespace and an equal price included)", () => {

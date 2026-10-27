@@ -1,4 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import * as milkOptionItemRoute from "../../app/api/admin/milk-options/[id]/route.ts";
+import * as milkOptionListRoute from "../../app/api/admin/milk-options/route.ts";
 import * as itemRoute from "../../app/api/admin/products/[id]/route.ts";
 import * as listRoute from "../../app/api/admin/products/route.ts";
 import { POST as loginRoute } from "../../app/api/admin/login/route.ts";
@@ -7,16 +9,21 @@ import {
   ADMIN_CLIENT_MESSAGES,
   submitLogin,
   submitLogout,
+  submitMilkOptionPatch,
+  submitNewMilkOption,
   submitNewProduct,
   submitProductPatch,
 } from "../../src/admin/admin-api.ts";
 import { ADMIN_ERRORS } from "../../src/admin/http.ts";
 import { loginLimiter } from "../../src/admin/login-limiter.ts";
+import { MILK_OPTION_INPUT_ERRORS } from "../../src/admin/milk-option-input.ts";
+import { buildNewMilkOption, buildSurchargePatch } from "../../src/admin/milk-option-list.tsx";
 import { hashAdminPassword } from "../../src/admin/password.ts";
 import { PRODUCT_INPUT_ERRORS } from "../../src/admin/product-input.ts";
 import { ADMIN_SESSION_COOKIE } from "../../src/admin/session.ts";
 import { seedCatalog } from "../../src/db/catalog.ts";
 import { readProductById } from "../../src/db/admin-products.ts";
+import { readMilkOptions } from "../../src/db/milk-options.ts";
 import { createTempDatabase, openMigratedDatabase, type TempDatabase } from "../helpers/temp-database.ts";
 
 const USERNAME = "barista";
@@ -33,6 +40,7 @@ const NEW_PRODUCT = {
   description: "",
   priceKurus: 14050,
   isAvailable: true,
+  containsMilk: true,
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -134,10 +142,88 @@ describe("admin requests", () => {
     expect(outcome.kind).toBe("unknown");
   });
 
+  it("treats a product answer without a boolean containsMilk as unknown", async () => {
+    const { containsMilk: _omitted, ...withoutMilk } = NEW_PRODUCT;
+    for (const product of [{ id: "x", ...withoutMilk }, { id: "x", ...withoutMilk, containsMilk: 1 }]) {
+      expect((await submitNewProduct(NEW_PRODUCT, fakeFetch(jsonResponse(201, { product })))).kind).toBe("unknown");
+    }
+  });
+
   it("returns only the contract's product fields", async () => {
     const product = { id: "espresso", ...NEW_PRODUCT, internal: "x" };
     const outcome = await submitProductPatch("espresso", { name: "A" }, fakeFetch(jsonResponse(200, { product })));
     expect(outcome).toEqual({ kind: "ok", value: { id: "espresso", ...NEW_PRODUCT } });
+  });
+});
+
+describe("admin milk option requests", () => {
+  const OAT = { id: "yulaf", name: "Yulaf sütü", surchargeKurus: 2550, isDefault: false, isAvailable: true };
+
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends same-origin relative JSON with {name, surchargeKurus} on create and absolute values on patch", async () => {
+    const created = fakeFetch(jsonResponse(201, { milkOption: OAT }));
+    expect(await submitNewMilkOption({ name: "Yulaf sütü", surchargeKurus: 2550 }, created)).toEqual({ kind: "ok", value: OAT });
+    const patched = fakeFetch(jsonResponse(200, { milkOption: { ...OAT, isAvailable: false } }));
+    expect(await submitMilkOptionPatch("yu laf/1", { isAvailable: false }, patched)).toEqual({
+      kind: "ok",
+      value: { ...OAT, isAvailable: false },
+    });
+
+    const calls = [...created.mock.calls, ...patched.mock.calls].map(([path, init]) => ({ path, ...(init as RequestInit) }));
+    expect(calls.map(({ path, method }) => `${method} ${path}`)).toEqual([
+      "POST /api/admin/milk-options",
+      "PATCH /api/admin/milk-options/yu%20laf%2F1",
+    ]);
+    for (const call of calls) {
+      expect(call.headers).toEqual({ "Content-Type": "application/json" });
+      expect(call.credentials).toBe("same-origin");
+      expect(call.signal).toBeInstanceOf(AbortSignal);
+    }
+    expect(JSON.parse(calls[0]?.body as string)).toEqual({ name: "Yulaf sütü", surchargeKurus: 2550 });
+    expect(JSON.parse(calls[1]?.body as string)).toEqual({ isAvailable: false });
+  });
+
+  it("reports a 400 with the server's Turkish message as failed", async () => {
+    const body = { error: MILK_OPTION_INPUT_ERRORS.invalid_surcharge, code: "invalid_milk_option" };
+    expect(await submitMilkOptionPatch("yulaf", { surchargeKurus: 2_000_000 }, fakeFetch(jsonResponse(400, body)))).toEqual({
+      kind: "failed",
+      message: MILK_OPTION_INPUT_ERRORS.invalid_surcharge,
+    });
+  });
+
+  it("reports a lost create with a check-the-list message and never resends it", async () => {
+    const failing = vi.fn<typeof fetch>(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await submitNewMilkOption({ name: "Yulaf sütü", surchargeKurus: 2550 }, failing)).toEqual({
+      kind: "unknown",
+      message: ADMIN_CLIENT_MESSAGES.milkOptionCreateUnknown,
+    });
+    expect(failing).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["a product body", { product: OAT }],
+    ["a surcharge as text", { milkOption: { ...OAT, surchargeKurus: "25,50" } }],
+    ["a missing isDefault", { milkOption: { ...OAT, isDefault: undefined } }],
+    ["a numeric isAvailable", { milkOption: { ...OAT, isAvailable: 1 } }],
+  ])("treats a success answer with %s as an unknown outcome", async (_name, body) => {
+    expect((await submitNewMilkOption({ name: "Yulaf sütü", surchargeKurus: 2550 }, fakeFetch(jsonResponse(201, body)))).kind).toBe(
+      "unknown",
+    );
+    expect((await submitMilkOptionPatch("yulaf", { isAvailable: true }, fakeFetch(jsonResponse(200, body)))).kind).toBe("unknown");
+  });
+
+  it("returns only the contract's milk option fields", async () => {
+    const outcome = await submitMilkOptionPatch("yulaf", { isAvailable: true }, fakeFetch(jsonResponse(200, { milkOption: { ...OAT, sortOrder: 3 } })));
+    expect(outcome).toEqual({ kind: "ok", value: OAT });
   });
 });
 
@@ -153,6 +239,7 @@ describe("admin requests against the real /api/admin handlers", () => {
     "POST /api/admin/login": (request) => loginRoute(request),
     "POST /api/admin/logout": (request) => logoutRoute(request),
     "POST /api/admin/products": (request) => listRoute.POST(request),
+    "POST /api/admin/milk-options": (request) => milkOptionListRoute.POST(request),
   };
 
   const browserFetch = vi.fn<typeof fetch>(async (input, init = {}) => {
@@ -165,9 +252,12 @@ describe("admin requests against the real /api/admin handlers", () => {
     }
     const request = new Request(`http://localhost${path}`, { ...init, headers });
     const key = `${init.method} ${path}`;
+    const params = { params: Promise.resolve({ id: decodeURIComponent(path.split("/").pop() ?? "") }) };
     const response = key.startsWith("PATCH /api/admin/products/")
-      ? await itemRoute.PATCH(request, { params: Promise.resolve({ id: decodeURIComponent(path.split("/").pop() ?? "") }) })
-      : await (routes[key] as (request: Request, path: string) => Promise<Response>)(request, path);
+      ? await itemRoute.PATCH(request, params)
+      : key.startsWith("PATCH /api/admin/milk-options/")
+        ? await milkOptionItemRoute.PATCH(request, params)
+        : await (routes[key] as (request: Request, path: string) => Promise<Response>)(request, path);
     const setCookie = response.headers.get("set-cookie");
     if (setCookie !== null) {
       const value = setCookie.split(";")[0]?.split("=")[1] ?? "";
@@ -206,7 +296,7 @@ describe("admin requests against the real /api/admin handlers", () => {
     const created = await submitNewProduct(NEW_PRODUCT, browserFetch);
     expect(created.kind).toBe("ok");
     const id = created.kind === "ok" ? created.value.id : "";
-    expect(readProductById(id)).toMatchObject({ name: "Flat White", priceKurus: 14050, isAvailable: true });
+    expect(readProductById(id)).toMatchObject({ name: "Flat White", priceKurus: 14050, isAvailable: true, containsMilk: true });
 
     expect(await submitProductPatch(id, { name: "Flat White Büyük", priceKurus: 15000 }, browserFetch)).toMatchObject({
       kind: "ok",
@@ -233,6 +323,53 @@ describe("admin requests against the real /api/admin handlers", () => {
       message: ADMIN_ERRORS.unauthorized,
     });
     expect(readProductById("cold-brew")?.isAvailable).toBe(true);
+  });
+
+  it("adds an option, saves its surcharge typed as 25,50, removes and reopens it, and is refused on Normal süt", async () => {
+    await submitLogin(USERNAME, PASSWORD, browserFetch);
+
+    const built = buildNewMilkOption({ name: " Yulaf sütü ", surcharge: "15" });
+    if (!built.ok) {
+      throw new Error(built.message);
+    }
+    const created = await submitNewMilkOption(built.value, browserFetch);
+    expect(created).toMatchObject({ kind: "ok", value: { name: "Yulaf sütü", surchargeKurus: 1500, isDefault: false, isAvailable: true } });
+    const id = created.kind === "ok" ? created.value.id : "";
+    // The page's server read now lists it after Normal süt.
+    expect(readMilkOptions().map((option) => option.name)).toEqual(["Normal süt", "Yulaf sütü"]);
+
+    const surcharge = buildSurchargePatch("25,50");
+    if (!surcharge.ok) {
+      throw new Error(surcharge.message);
+    }
+    expect(await submitMilkOptionPatch(id, surcharge.value, browserFetch)).toMatchObject({ kind: "ok", value: { surchargeKurus: 2550 } });
+    expect(readMilkOptions().find((option) => option.id === id)?.surchargeKurus).toBe(2550);
+
+    expect(await submitMilkOptionPatch(id, { isAvailable: false }, browserFetch)).toMatchObject({
+      kind: "ok",
+      value: { id, isAvailable: false, surchargeKurus: 2550 },
+    });
+    expect(await submitMilkOptionPatch(id, { isAvailable: true }, browserFetch)).toMatchObject({ kind: "ok", value: { isAvailable: true } });
+
+    expect(await submitMilkOptionPatch(id, { surchargeKurus: 1_000_001 }, browserFetch)).toEqual({
+      kind: "failed",
+      message: MILK_OPTION_INPUT_ERRORS.invalid_surcharge,
+    });
+    expect(await submitMilkOptionPatch("normal-sut", { isAvailable: false }, browserFetch)).toEqual({
+      kind: "failed",
+      message: ADMIN_ERRORS.default_milk_option,
+    });
+    expect(await submitNewMilkOption({ name: " ", surchargeKurus: 100 }, browserFetch)).toEqual({
+      kind: "failed",
+      message: MILK_OPTION_INPUT_ERRORS.invalid_name,
+    });
+
+    await submitLogout(browserFetch);
+    expect(await submitMilkOptionPatch(id, { isAvailable: false }, browserFetch)).toEqual({
+      kind: "unauthorized",
+      message: ADMIN_ERRORS.unauthorized,
+    });
+    expect(readMilkOptions().find((option) => option.id === id)?.isAvailable).toBe(true);
   });
 
   it("is unauthorized with a session captured before a logout in another tab", async () => {

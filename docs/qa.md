@@ -9,7 +9,7 @@ _A field marked **Repos:** applies only to those repositories; a field without t
 **Repos:** coffy-shop
 
 - Typecheck — tsc --noEmit on every PR and main build
-- Unit + feature — Vitest 5 (node env), 47 files under tests/, each test on its own temporary migrated SQLite file; route handlers are called directly with Request objects
+- Unit + feature — Vitest 5 (node env), 51 files under tests/, each test on its own temporary migrated SQLite file; route handlers are called directly with Request objects
 - E2E smoke — Playwright 1.64 Chromium, 11 tests in e2e/smoke, against a local production build behind an HTTPS loopback proxy with a fresh DB and random test admin (npm run smoke)
 - Deployed E2E — external E2E partner runs the e2e/README.md scenarios against Demo after the DIJJI deploy event
 - Server config (visudo, systemd-analyze verify, caddy validate, provision.sh) — manual on the server only; CI checks them statically (bash -n, wrapper argument validation)
@@ -62,19 +62,19 @@ _Flows Edit cart, Staff product management and Staff logout have unit/feature co
 
 **Repos:** coffy-shop
 
-- Web server API — tests/api: orders, health, version, admin-auth (login/logout, invalid config), admin-products, admin-orders (incl. refusals without session)
-- Admin domain — tests/admin: password, config, origin + limiter + session, product-input, try-price-input, admin-api client, proxy, admin components
+- Web server API — tests/api: orders, health, version, admin-auth (login/logout, invalid config), admin-products (incl. containsMilk and the milkOptions list), admin-milk-options (create, update, Normal süt refusal, refusals without session or Origin, placed orders unchanged), admin-orders (incl. refusals without session)
+- Admin domain — tests/admin: password, config, origin + limiter + session, product-input (incl. containsMilk), milk-option-input, try-price-input, admin-api client (incl. milk option calls), proxy, admin components, milk-option-list (rows, Normal süt read-only, add form lock on unknown outcome)
 - Cart domain — tests/cart: cart rules, cart-store, cart-view
 - Orders domain — tests/orders: order-request, order-status, checkout-submission, checkout-form
 - Menu — tests/menu: format-price, menu-view
-- Data access — tests/db: connection, migrate, catalog, menu, orders, admin-orders, admin-products, admin-sessions, backup, reset, reset-guard; concurrent order and status workers in tests/helpers
+- Data access — tests/db: connection, migrate, catalog, menu, orders, admin-orders, admin-products, admin-sessions, milk-options (writes, default-option protection, placed orders unchanged, migration 0005 on a 0004 database and on a fresh one), backup, reset, reset-guard; concurrent order and status workers in tests/helpers
 - Database CLI — tests/cli.test.ts: entry points, guarded reset refusals, admin:hash-password
 - Deploy wrapper and server files — tests/deploy/scripts.test.ts: shell syntax, wrapper argument validation, provisioning, config files, runbook
 - CI and smoke tooling — tests/scripts: workflows, package-release, upload-release, verify-release, check-deploy-config, smoke harness
 - Page: Menü — tests/app/page.test.tsx (menu page, root layout)
 - Page: Sepet — tests/app/sepet-page.test.tsx
 - Page: Sipariş ver, Sipariş takibi, not-found — tests/app/siparis-pages.test.tsx
-- Page: Yönetici girişi and admin pages (Ürünler, Yeni ürün, Ürünü düzenle, Siparişler, Sipariş detayı) — tests/app/yonetim-pages.test.tsx
+- Page: Yönetici girişi and admin pages (Ürünler, Yeni ürün, Ürünü düzenle, Siparişler, Sipariş detayı, Süt seçenekleri) — tests/app/yonetim-pages.test.tsx
 
 _Mapped from test file names and their top-level describe blocks._
 

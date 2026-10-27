@@ -20,6 +20,7 @@ export interface ProductFields {
   description: string;
   priceKurus: number;
   isAvailable: boolean;
+  containsMilk: boolean;
 }
 
 export type ProductPatch = Partial<ProductFields>;
@@ -38,6 +39,7 @@ interface ProductRow {
   description: string;
   price_kurus: number;
   is_available: number;
+  contains_milk: number;
 }
 
 // Column names come only from this list, never from request keys.
@@ -47,6 +49,7 @@ const PATCH_COLUMNS: readonly (readonly [keyof ProductFields, string])[] = [
   ["description", "description"],
   ["priceKurus", "price_kurus"],
   ["isAvailable", "is_available"],
+  ["containsMilk", "contains_milk"],
 ];
 
 // 16 lowercase hex characters: URL-safe and within the 1-64 product id rule.
@@ -66,13 +69,15 @@ function toProduct(row: ProductRow): MenuProduct {
     description: row.description,
     priceKurus: Number(row.price_kurus),
     isAvailable: row.is_available === 1,
+    containsMilk: row.contains_milk === 1,
   };
 }
 
 // availability is stored as exactly 0 or 1, which both getMenu and
-// createOrder read as "is_available = 1 means orderable".
+// createOrder read as "is_available = 1 means orderable". contains_milk is
+// 0 or 1 the same way.
 function toColumnValue(field: keyof ProductFields, value: ProductFields[keyof ProductFields]): string | number {
-  if (field === "isAvailable") {
+  if (field === "isAvailable" || field === "containsMilk") {
     return value === true ? 1 : 0;
   }
   return value as string | number;
@@ -102,7 +107,9 @@ export function findProductById(db: DatabaseSync, id: string): MenuProduct | nul
     return null;
   }
   const row = db
-    .prepare("SELECT id, category_id, name, description, price_kurus, is_available FROM products WHERE id = ?")
+    .prepare(
+      "SELECT id, category_id, name, description, price_kurus, is_available, contains_milk FROM products WHERE id = ?",
+    )
     .get(id) as ProductRow | undefined;
   return row === undefined ? null : toProduct(row);
 }
@@ -134,8 +141,8 @@ export function createProduct(
       .prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM products WHERE category_id = ?")
       .get(fields.categoryId) as { next: number };
     db.prepare(
-      `INSERT INTO products (id, category_id, name, description, price_kurus, is_available, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (id, category_id, name, description, price_kurus, is_available, contains_milk, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       fields.categoryId,
@@ -143,6 +150,7 @@ export function createProduct(
       fields.description,
       fields.priceKurus,
       toColumnValue("isAvailable", fields.isAvailable),
+      toColumnValue("containsMilk", fields.containsMilk),
       Number(next),
     );
     return { status: "created", product: findProductById(db, id) as MenuProduct };

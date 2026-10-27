@@ -20,9 +20,9 @@ const MENU: MenuCategory[] = [
     id: "sicak-kahveler",
     name: "Sıcak Kahveler",
     products: [
-      { id: "espresso", categoryId: "sicak-kahveler", name: "Espresso", description: "", priceKurus: 9000, isAvailable: true },
-      { id: "latte", categoryId: "sicak-kahveler", name: "Latte", description: "", priceKurus: 13550, isAvailable: true },
-      { id: "cold-brew", categoryId: "sicak-kahveler", name: "Cold Brew", description: "", priceKurus: 12000, isAvailable: false },
+      { id: "espresso", categoryId: "sicak-kahveler", name: "Espresso", description: "", priceKurus: 9000, isAvailable: true, containsMilk: false },
+      { id: "latte", categoryId: "sicak-kahveler", name: "Latte", description: "", priceKurus: 13550, isAvailable: true, containsMilk: true },
+      { id: "cold-brew", categoryId: "sicak-kahveler", name: "Cold Brew", description: "", priceKurus: 12000, isAvailable: false, containsMilk: false },
     ],
   },
 ];

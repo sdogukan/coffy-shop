@@ -5,11 +5,13 @@ export const ADMIN_LOGIN_PATH = "/yonetim/giris";
 export const ADMIN_PRODUCTS_PATH = "/yonetim/urunler";
 export const ADMIN_NEW_PRODUCT_PATH = "/yonetim/urunler/yeni";
 export const ADMIN_ORDERS_PATH = "/yonetim/siparisler";
+export const ADMIN_MILK_OPTIONS_PATH = "/yonetim/sut-secenekleri";
 
 export const ADMIN_LOGIN_ENDPOINT = "/api/admin/login";
 export const ADMIN_LOGOUT_ENDPOINT = "/api/admin/logout";
 export const ADMIN_PRODUCTS_ENDPOINT = "/api/admin/products";
 export const ADMIN_ORDERS_ENDPOINT = "/api/admin/orders";
+export const ADMIN_MILK_OPTIONS_ENDPOINT = "/api/admin/milk-options";
 
 export function adminProductPath(id: string): string {
   return `${ADMIN_PRODUCTS_PATH}/${encodeURIComponent(id)}`;
@@ -30,4 +32,8 @@ export function adminOrderEndpoint(id: number): string {
 
 export function adminOrderStatusEndpoint(id: number): string {
   return `${adminOrderEndpoint(id)}/status`;
+}
+
+export function adminMilkOptionEndpoint(id: string): string {
+  return `${ADMIN_MILK_OPTIONS_ENDPOINT}/${encodeURIComponent(id)}`;
 }

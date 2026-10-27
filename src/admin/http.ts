@@ -17,6 +17,9 @@ export const ADMIN_ERRORS = {
   // Sent with code not_found by the order endpoints, so an order 404 does not
   // read as a missing product.
   order_not_found: "Sipariş bulunamadı.",
+  // Sent with code not_found by the milk option endpoints.
+  milk_option_not_found: "Süt seçeneği bulunamadı.",
+  default_milk_option: "Normal süt değiştirilemez ve kaldırılamaz.",
   invalid_status: "Sipariş durumu geçersiz.",
   invalid_transition:
     "Sipariş bu duruma geçirilemedi; durumu değişmiş olabilir. Lütfen sayfayı yenileyip güncel durumu kontrol edin.",
